@@ -1,0 +1,5 @@
+spring:
+  config:
+    name: agentX-app
+  profiles:
+    active: dev
