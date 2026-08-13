@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.example.infrastructure.dao.IAgentDao">
+
+    <insert id="insert" parameterType="org.example.infrastructure.dao.po.AgentPO">
+        INSERT INTO agent
+            (id, name, avatar, description, system_prompt, welcome_message, enabled, user_id, created_at, updated_at)
+        VALUES
+            (#{id}, #{name}, #{avatar}, #{description}, #{systemPrompt}, #{welcomeMessage}, #{enabled}, #{userId}, #{createdAt}, #{updatedAt})
+    </insert>
+
+    <select id="queryById" parameterType="java.lang.String" resultType="org.example.infrastructure.dao.po.AgentPO">
+        SELECT id, name, avatar, description, system_prompt, welcome_message, enabled, user_id, created_at, updated_at
+        FROM agent
+        WHERE id = #{id}
+    </select>
+
+</mapper>

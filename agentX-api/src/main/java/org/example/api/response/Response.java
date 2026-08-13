@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.example.types.enums.ResponseCode;
 
 import java.io.Serializable;
 
@@ -18,5 +19,21 @@ public class Response<T> implements Serializable {
     private String code;
     private String info;
     private T data;
+
+    public static <T> Response<T> success() {
+        return new Response<>(ResponseCode.SUCCESS.getCode(), ResponseCode.SUCCESS.getInfo(), null);
+    }
+
+    public static <T> Response<T> success(T data) {
+        return new Response<>(ResponseCode.SUCCESS.getCode(), ResponseCode.SUCCESS.getInfo(), data);
+    }
+
+    public static <T> Response<T> error(ResponseCode responseCode) {
+        return new Response<>(responseCode.getCode(), responseCode.getInfo(), null);
+    }
+
+    public static <T> Response<T> error(String code, String info) {
+        return new Response<>(code, info, null);
+    }
 
 }
