@@ -11,7 +11,7 @@ import org.example.trigger.dto.agent.AgentRes;
  */
 public class AgentAssembler {
 
-    /** 入参 DTO -> 领域实体 */
+    /** 入参 DTO -> 领域实体（创建：初始状态由领域工厂统一生成） */
     public static AgentEntity toEntity(AgentReq req) {
         return AgentEntity.createNew(
                 req.getName(),
@@ -20,6 +20,18 @@ public class AgentAssembler {
                 req.getSystemPrompt(),
                 req.getWelcomeMessage(),
                 req.getUserId());
+    }
+
+    /** 入参 DTO -> 领域实体（更新：仅携带ID与可编辑业务字段，归属/状态/时间戳由领域服务合并保留） */
+    public static AgentEntity toUpdateEntity(AgentReq req) {
+        AgentEntity agent = new AgentEntity();
+        agent.setId(req.getId());
+        agent.setName(req.getName());
+        agent.setAvatar(req.getAvatar());
+        agent.setDescription(req.getDescription());
+        agent.setSystemPrompt(req.getSystemPrompt());
+        agent.setWelcomeMessage(req.getWelcomeMessage());
+        return agent;
     }
 
     /** 领域实体 -> 出参 DTO */
@@ -33,6 +45,7 @@ public class AgentAssembler {
         res.setWelcomeMessage(entity.getWelcomeMessage());
         res.setEnabled(entity.getEnabled());
         res.setCreateTime(entity.getCreatedAt());
+        res.setUpdateTime(entity.getUpdatedAt());
         return res;
     }
 }

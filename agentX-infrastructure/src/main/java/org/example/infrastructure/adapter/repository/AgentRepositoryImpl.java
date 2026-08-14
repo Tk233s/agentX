@@ -7,6 +7,9 @@ import org.example.infrastructure.dao.po.AgentPO;
 import org.springframework.stereotype.Repository;
 
 import javax.annotation.Resource;
+import java.util.Collections;
+import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * 智能体仓储实现
@@ -24,8 +27,27 @@ public class AgentRepositoryImpl implements AgentRepository {
     }
 
     @Override
+    public void update(AgentEntity agent) {
+        agentDao.update(toPO(agent));
+    }
+
+    @Override
+    public int deleteById(String id) {
+        return agentDao.deleteById(id);
+    }
+
+    @Override
     public AgentEntity findById(String id) {
         return toEntity(agentDao.queryById(id));
+    }
+
+    @Override
+    public List<AgentEntity> queryByUserId(String userId) {
+        List<AgentPO> pos = agentDao.queryByUserId(userId);
+        if (pos == null || pos.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return pos.stream().map(this::toEntity).collect(Collectors.toList());
     }
 
     /** Entity -> PO */

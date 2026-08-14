@@ -9,10 +9,35 @@
             (#{id}, #{name}, #{avatar}, #{description}, #{systemPrompt}, #{welcomeMessage}, #{enabled}, #{userId}, #{createdAt}, #{updatedAt})
     </insert>
 
+    <update id="update" parameterType="org.example.infrastructure.dao.po.AgentPO">
+        UPDATE agent
+        SET name            = #{name},
+            avatar          = #{avatar},
+            description     = #{description},
+            system_prompt   = #{systemPrompt},
+            welcome_message = #{welcomeMessage},
+            enabled         = #{enabled},
+            user_id         = #{userId},
+            updated_at      = #{updatedAt}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById" parameterType="java.lang.String">
+        DELETE FROM agent
+        WHERE id = #{id}
+    </delete>
+
     <select id="queryById" parameterType="java.lang.String" resultType="org.example.infrastructure.dao.po.AgentPO">
         SELECT id, name, avatar, description, system_prompt, welcome_message, enabled, user_id, created_at, updated_at
         FROM agent
         WHERE id = #{id}
+    </select>
+
+    <select id="queryByUserId" parameterType="java.lang.String" resultType="org.example.infrastructure.dao.po.AgentPO">
+        SELECT id, name, avatar, description, system_prompt, welcome_message, enabled, user_id, created_at, updated_at
+        FROM agent
+        WHERE user_id = #{userId}
+        ORDER BY created_at DESC
     </select>
 
 </mapper>
