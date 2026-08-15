@@ -59,6 +59,12 @@ public class AgentRepositoryImpl implements AgentRepository {
         po.setDescription(agent.getDescription());
         po.setSystemPrompt(agent.getSystemPrompt());
         po.setWelcomeMessage(agent.getWelcomeMessage());
+        po.setProvider(agent.getProvider());
+        po.setModelId(agent.getModelId());
+        po.setTemperature(agent.getTemperature());
+        po.setTopP(agent.getTopP());
+        po.setTopK(agent.getTopK());
+        po.setMaxTokens(agent.getMaxTokens());
         po.setEnabled(agent.getEnabled());
         po.setUserId(agent.getUserId());
         po.setCreatedAt(agent.getCreatedAt());
@@ -78,6 +84,12 @@ public class AgentRepositoryImpl implements AgentRepository {
         agent.setDescription(po.getDescription());
         agent.setSystemPrompt(po.getSystemPrompt());
         agent.setWelcomeMessage(po.getWelcomeMessage());
+        agent.setProvider(po.getProvider());
+        agent.setModelId(po.getModelId());
+        agent.setTemperature(po.getTemperature());
+        agent.setTopP(po.getTopP());
+        agent.setTopK(po.getTopK());
+        agent.setMaxTokens(po.getMaxTokens());
         agent.setEnabled(po.getEnabled());
         agent.setUserId(po.getUserId());
         agent.setCreatedAt(po.getCreatedAt());

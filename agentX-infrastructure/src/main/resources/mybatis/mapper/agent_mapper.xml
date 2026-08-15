@@ -4,9 +4,13 @@
 
     <insert id="insert" parameterType="org.example.infrastructure.dao.po.AgentPO">
         INSERT INTO agent
-            (id, name, avatar, description, system_prompt, welcome_message, enabled, user_id, created_at, updated_at)
+            (id, name, avatar, description, system_prompt, welcome_message,
+             provider, model_id, temperature, top_p, top_k, max_tokens,
+             enabled, user_id, created_at, updated_at)
         VALUES
-            (#{id}, #{name}, #{avatar}, #{description}, #{systemPrompt}, #{welcomeMessage}, #{enabled}, #{userId}, #{createdAt}, #{updatedAt})
+            (#{id}, #{name}, #{avatar}, #{description}, #{systemPrompt}, #{welcomeMessage},
+             #{provider}, #{modelId}, #{temperature}, #{topP}, #{topK}, #{maxTokens},
+             #{enabled}, #{userId}, #{createdAt}, #{updatedAt})
     </insert>
 
     <update id="update" parameterType="org.example.infrastructure.dao.po.AgentPO">
@@ -16,6 +20,12 @@
             description     = #{description},
             system_prompt   = #{systemPrompt},
             welcome_message = #{welcomeMessage},
+            provider        = #{provider},
+            model_id        = #{modelId},
+            temperature     = #{temperature},
+            top_p           = #{topP},
+            top_k           = #{topK},
+            max_tokens      = #{maxTokens},
             enabled         = #{enabled},
             user_id         = #{userId},
             updated_at      = #{updatedAt}
@@ -28,13 +38,17 @@
     </delete>
 
     <select id="queryById" parameterType="java.lang.String" resultType="org.example.infrastructure.dao.po.AgentPO">
-        SELECT id, name, avatar, description, system_prompt, welcome_message, enabled, user_id, created_at, updated_at
+        SELECT id, name, avatar, description, system_prompt, welcome_message,
+               provider, model_id, temperature, top_p, top_k, max_tokens,
+               enabled, user_id, created_at, updated_at
         FROM agent
         WHERE id = #{id}
     </select>
 
     <select id="queryByUserId" parameterType="java.lang.String" resultType="org.example.infrastructure.dao.po.AgentPO">
-        SELECT id, name, avatar, description, system_prompt, welcome_message, enabled, user_id, created_at, updated_at
+        SELECT id, name, avatar, description, system_prompt, welcome_message,
+               provider, model_id, temperature, top_p, top_k, max_tokens,
+               enabled, user_id, created_at, updated_at
         FROM agent
         WHERE user_id = #{userId}
         ORDER BY created_at DESC

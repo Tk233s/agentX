@@ -2,6 +2,8 @@ package org.example.trigger.dto.agent;
 
 import lombok.Data;
 
+import javax.validation.constraints.Max;
+import javax.validation.constraints.Min;
 import javax.validation.constraints.NotBlank;
 
 /**
@@ -31,6 +33,29 @@ public class AgentReq {
 
     /** 欢迎消息 */
     private String welcomeMessage;
+
+    /** 服务商 openai/anthropic */
+    private String provider;
+
+    /** 模型ID */
+    private String modelId;
+
+    /** 温度参数 0-2 */
+    @Min(value = 0, message = "temperature最小值为0")
+    @Max(value = 2, message = "temperature最大值为2")
+    private Double temperature;
+
+    /** Top-P参数 0-1 */
+    @Min(value = 0, message = "topP最小值为0")
+    @Max(value = 1, message = "topP最大值为1")
+    private Double topP;
+
+    /** Top-K参数 */
+    private Integer topK;
+
+    /** 最大Token数 */
+    @Min(value = 1, message = "maxTokens最小值为1")
+    private Integer maxTokens;
 
     /** 创建者用户ID；TODO 临时占位，后续接入登录态（ThreadLocal/上下文）后移除 */
     private String userId;

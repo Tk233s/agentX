@@ -1,0 +1,65 @@
+package org.example.domain.apikey.service.Impl;
+
+import org.example.domain.apikey.adapter.repository.ApiKeyRepository;
+import org.example.domain.apikey.model.entity.ApiKeyEntity;
+import org.example.domain.apikey.service.IApiKeyDomainService;
+import org.example.types.enums.ResponseCode;
+import org.example.types.exception.AppException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import javax.annotation.Resource;
+import java.time.LocalDateTime;
+import java.util.List;
+
+/**
+ * API密钥领域服务实现
+ */
+@Service
+public class ApiKeyDomainServiceImpl implements IApiKeyDomainService {
+
+    @Resource
+    private ApiKeyRepository apiKeyRepository;
+
+    @Transactional
+    public ApiKeyEntity createApiKey(ApiKeyEntity apiKey) {
+        apiKey.validate();
+        apiKeyRepository.save(apiKey);
+        return apiKey;
+    }
+
+    @Transactional
+    public ApiKeyEntity updateApiKey(ApiKeyEntity apiKey) {
+        apiKey.validate();
+        ApiKeyEntity existing = apiKeyRepository.findById(apiKey.getId());
+        if (existing == null) {
+            throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "API密钥不存在");
+        }
+        // 保留不可覆盖字段
+        apiKey.setUserId(existing.getUserId());
+        apiKey.setCreatedAt(existing.getCreatedAt());
+        apiKey.setUpdatedAt(LocalDateTime.now());
+        apiKeyRepository.update(apiKey);
+        return apiKey;
+    }
+
+    @Transactional
+    public void deleteApiKey(String id) {
+        int rows = apiKeyRepository.deleteById(id);
+        if (rows == 0) {
+            throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "API密钥不存在");
+        }
+    }
+
+    public ApiKeyEntity getApiKey(String id) {
+        return apiKeyRepository.findById(id);
+    }
+
+    public List<ApiKeyEntity> listApiKeys(String userId) {
+        return apiKeyRepository.queryByUserId(userId);
+    }
+
+    public ApiKeyEntity getApiKeyByProvider(String userId, String provider) {
+        return apiKeyRepository.findByUserIdAndProvider(userId, provider);
+    }
+}

@@ -28,6 +28,24 @@ public class AgentPO {
     /** 欢迎消息 */
     private String welcomeMessage;
 
+    /** 服务商 openai/anthropic */
+    private String provider;
+
+    /** 模型ID */
+    private String modelId;
+
+    /** 温度参数 0-2 */
+    private Double temperature;
+
+    /** Top-P参数 0-1 */
+    private Double topP;
+
+    /** Top-K参数 */
+    private Integer topK;
+
+    /** 最大Token数 */
+    private Integer maxTokens;
+
     /** 智能体状态：1-启用，0-禁用 */
     private Boolean enabled;
 

@@ -19,7 +19,13 @@ public class AgentAssembler {
                 req.getDescription(),
                 req.getSystemPrompt(),
                 req.getWelcomeMessage(),
-                req.getUserId());
+                req.getUserId(),
+                req.getProvider(),
+                req.getModelId(),
+                req.getTemperature(),
+                req.getTopP(),
+                req.getTopK(),
+                req.getMaxTokens());
     }
 
     /** 入参 DTO -> 领域实体（更新：仅携带ID与可编辑业务字段，归属/状态/时间戳由领域服务合并保留） */
@@ -31,6 +37,12 @@ public class AgentAssembler {
         agent.setDescription(req.getDescription());
         agent.setSystemPrompt(req.getSystemPrompt());
         agent.setWelcomeMessage(req.getWelcomeMessage());
+        agent.setProvider(req.getProvider());
+        agent.setModelId(req.getModelId());
+        agent.setTemperature(req.getTemperature());
+        agent.setTopP(req.getTopP());
+        agent.setTopK(req.getTopK());
+        agent.setMaxTokens(req.getMaxTokens());
         return agent;
     }
 
@@ -43,6 +55,12 @@ public class AgentAssembler {
         res.setDescription(entity.getDescription());
         res.setSystemPrompt(entity.getSystemPrompt());
         res.setWelcomeMessage(entity.getWelcomeMessage());
+        res.setProvider(entity.getProvider());
+        res.setModelId(entity.getModelId());
+        res.setTemperature(entity.getTemperature());
+        res.setTopP(entity.getTopP());
+        res.setTopK(entity.getTopK());
+        res.setMaxTokens(entity.getMaxTokens());
         res.setEnabled(entity.getEnabled());
         res.setCreateTime(entity.getCreatedAt());
         res.setUpdateTime(entity.getUpdatedAt());

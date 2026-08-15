@@ -29,6 +29,24 @@ public class AgentRes {
     /** 欢迎消息 */
     private String welcomeMessage;
 
+    /** 服务商 */
+    private String provider;
+
+    /** 模型ID */
+    private String modelId;
+
+    /** 温度参数 */
+    private Double temperature;
+
+    /** Top-P参数 */
+    private Double topP;
+
+    /** Top-K参数 */
+    private Integer topK;
+
+    /** 最大Token数 */
+    private Integer maxTokens;
+
     /** 智能体状态 */
     private Boolean enabled;
 
