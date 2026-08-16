@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.example.infrastructure.dao.IMessageDao">
+
+    <insert id="insert" parameterType="org.example.infrastructure.dao.po.MessagePO">
+        INSERT INTO message
+            (id, session_id, role, content, tokens, created_at)
+        VALUES
+            (#{id}, #{sessionId}, #{role}, #{content}, #{tokens}, #{createdAt})
+    </insert>
+
+    <select id="queryBySessionId" parameterType="java.lang.String" resultType="org.example.infrastructure.dao.po.MessagePO">
+        SELECT id, session_id, role, content, tokens, created_at
+        FROM message
+        WHERE session_id = #{sessionId}
+        ORDER BY created_at ASC
+    </select>
+
+    <delete id="deleteBySessionId" parameterType="java.lang.String">
+        DELETE FROM message
+        WHERE session_id = #{sessionId}
+    </delete>
+
+</mapper>

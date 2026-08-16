@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.example.infrastructure.dao.ISessionDao">
+
+    <insert id="insert" parameterType="org.example.infrastructure.dao.po.SessionPO">
+        INSERT INTO session
+            (id, title, agent_id, user_id, created_at, updated_at)
+        VALUES
+            (#{id}, #{title}, #{agentId}, #{userId}, #{createdAt}, #{updatedAt})
+    </insert>
+
+    <update id="update" parameterType="org.example.infrastructure.dao.po.SessionPO">
+        UPDATE session
+        SET title      = #{title},
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById" parameterType="java.lang.String">
+        DELETE FROM session
+        WHERE id = #{id}
+    </delete>
+
+    <select id="queryById" parameterType="java.lang.String" resultType="org.example.infrastructure.dao.po.SessionPO">
+        SELECT id, title, agent_id, user_id, created_at, updated_at
+        FROM session
+        WHERE id = #{id}
+    </select>
+
+    <select id="queryByUserId" parameterType="java.lang.String" resultType="org.example.infrastructure.dao.po.SessionPO">
+        SELECT id, title, agent_id, user_id, created_at, updated_at
+        FROM session
+        WHERE user_id = #{userId}
+        ORDER BY updated_at DESC
+    </select>
+
+</mapper>
