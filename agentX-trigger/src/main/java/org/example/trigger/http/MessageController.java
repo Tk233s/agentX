@@ -6,7 +6,7 @@ import org.example.domain.message.service.IMessageDomainService;
 import org.example.trigger.dto.message.MessageRes;
 import org.springframework.web.bind.annotation.*;
 
-import javax.annotation.Resource;
+import jakarta.annotation.Resource;
 import java.util.List;
 
 /**

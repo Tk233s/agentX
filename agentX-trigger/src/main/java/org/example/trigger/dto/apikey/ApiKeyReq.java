@@ -2,7 +2,7 @@ package org.example.trigger.dto.apikey;
 
 import lombok.Data;
 
-import javax.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotBlank;
 
 /**
  * API密钥 HTTP 入参 DTO（创建/更新共用）

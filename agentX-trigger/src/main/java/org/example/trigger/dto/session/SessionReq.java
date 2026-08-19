@@ -2,7 +2,7 @@ package org.example.trigger.dto.session;
 
 import lombok.Data;
 
-import javax.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotBlank;
 
 /**
  * 会话 HTTP 入参 DTO

@@ -6,7 +6,7 @@ import org.example.infrastructure.dao.ISessionDao;
 import org.example.infrastructure.dao.po.SessionPO;
 import org.springframework.stereotype.Repository;
 
-import javax.annotation.Resource;
+import jakarta.annotation.Resource;
 import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;

@@ -1,6 +1,6 @@
 package org.example.trigger.dto.apikey;
 
-import javax.validation.groups.Default;
+import jakarta.validation.groups.Default;
 
 /**
  * 更新操作的校验分组
