@@ -1,6 +1,7 @@
 package org.example.infrastructure.llm;
 
-import org.example.domain.llm.model.entity.LLMEntity;
+import org.example.domain.conversation.adapter.port.LLMPort;
+import org.example.domain.conversation.model.entity.LLMEntity;
 import org.example.domain.message.model.entity.MessageEntity;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -20,7 +21,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Component
-public class OpenAIClient implements LLMClient {
+public class OpenAIClient implements LLMPort {
 
     @Override
     public String call(LLMEntity llmEntity) {

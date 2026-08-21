@@ -1,11 +1,13 @@
-package org.example.domain.llm.model.entity;
+package org.example.domain.conversation.model.entity;
 
+import lombok.Builder;
 import lombok.Data;
 import org.example.domain.message.model.entity.MessageEntity;
 
 import java.util.List;
 
 @Data
+@Builder
 public class LLMEntity {
 
     private String model;
@@ -14,6 +16,7 @@ public class LLMEntity {
     private Double temperature;
     private Integer maxTokens;
 
+    private String provider;
 
     private String systemPrompt;
     private List<MessageEntity> messages;
