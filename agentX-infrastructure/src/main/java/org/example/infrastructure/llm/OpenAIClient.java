@@ -3,6 +3,7 @@ package org.example.infrastructure.llm;
 import org.example.domain.conversation.adapter.port.LLMPort;
 import org.example.domain.conversation.model.entity.LLMEntity;
 import org.example.domain.message.model.entity.MessageEntity;
+import org.example.infrastructure.tool.ToolRegistry;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
@@ -23,40 +24,69 @@ import java.util.List;
 @Component
 public class OpenAIClient implements LLMPort {
 
+    private final ToolRegistry toolRegistry;
+
+    public OpenAIClient(ToolRegistry toolRegistry) {
+        this.toolRegistry = toolRegistry;
+    }
+
     @Override
     public String call(LLMEntity llmEntity) {
 
-        // 第 1 步：根据参数动态构建 ChatClient
-        ChatClient client = buildChatClient(llmEntity.getModel(),
-                                            llmEntity.getApiKey(),
-                                            llmEntity.getBaseUrl(),
-                                            llmEntity.getTemperature(),
-                                            llmEntity.getMaxTokens());
+        // 第 1 步：从 ToolRegistry 取出该 Agent 配置的工具实例
+        System.out.println("[DEBUG] LLMEntity.tools = " + llmEntity.getTools());
+        List<Object> tools = toolRegistry.getTools(llmEntity.getTools());
+        System.out.println("[DEBUG] ToolRegistry 返回工具数 = " + tools.size());
 
-        // 第 2 步：组装消息并调用
-        ChatResponse response = client
-                .prompt(buildPrompt(llmEntity.getSystemPrompt(), llmEntity.getMessages()))
-                .call()
-                .chatResponse();
+        // 第 2 步：构建基础 ChatClient
+        ChatClient baseClient = buildChatClient(llmEntity.getModel(),
+                                                  llmEntity.getApiKey(),
+                                                  llmEntity.getBaseUrl(),
+                                                  llmEntity.getTemperature(),
+                                                  llmEntity.getMaxTokens());
 
-        // 第 3 步：提取结果文本
+        // 第 3 步：组装消息并调用
+        //         Spring AI 1.0.0 使用 .tools() 在调用时动态注册工具
+        //         如果 tools 为空，不传 .tools()，走纯对话
+        var promptSpec = baseClient.prompt(buildPrompt(llmEntity.getSystemPrompt(), llmEntity.getMessages()));
+        if (!tools.isEmpty()) {
+            System.out.println("[DEBUG] 注册工具数：" + tools.size() + "，类型：" + tools.stream().map(t -> t.getClass().getSimpleName()).toList());
+            promptSpec = promptSpec.tools(tools.toArray(new Object[0]));
+        } else {
+            System.out.println("[DEBUG] 无工具注册");
+        }
+
+        ChatResponse response = promptSpec.call().chatResponse();
+
+        // 第 4 步：提取结果文本
         return response.getResults().get(0).getOutput().getText();
     }
 
     @Override
     public Flux<String> stream(LLMEntity llmEntity) {
 
-        ChatClient client = buildChatClient(llmEntity.getModel(),
-                                            llmEntity.getApiKey(),
-                                            llmEntity.getBaseUrl(),
-                                            llmEntity.getTemperature(),
-                                            llmEntity.getMaxTokens());
+        List<Object> tools = toolRegistry.getTools(llmEntity.getTools());
 
-        return client.prompt(buildPrompt(llmEntity.getSystemPrompt(), llmEntity.getMessages()))
-                .stream()
-                .content();
+        ChatClient baseClient = buildChatClient(llmEntity.getModel(),
+                                                  llmEntity.getApiKey(),
+                                                  llmEntity.getBaseUrl(),
+                                                  llmEntity.getTemperature(),
+                                                  llmEntity.getMaxTokens());
+
+        var promptSpec = baseClient.prompt(buildPrompt(llmEntity.getSystemPrompt(), llmEntity.getMessages()));
+        if (!tools.isEmpty()) {
+            promptSpec = promptSpec.tools(tools.toArray(new Object[0]));
+        }
+
+        return promptSpec.stream().content();
     }
 
+    /**
+     * 构建基础 ChatClient（不含工具，工具在调用时通过 .tools() 注册）。     *
+     * Spring AI 1.0.0 的工具注册方式：
+     * - 调用时 .tools(Object...) 动态注册（推荐，支持每次调用不同工具）
+     * - 而不是构建时 .defaultTools()（旧版本方式，1.0.0 已不推荐）
+     */
     private ChatClient buildChatClient(String model,
                                        String apiKey,
                                        String baseUrl,
@@ -64,8 +94,6 @@ public class OpenAIClient implements LLMPort {
                                        Integer maxTokens) {
 
         // Step 1: 构建 OpenAiApi（HTTP 连接层）
-        //         baseUrl 可以是 OpenAI 官方、DeepSeek、智谱、Moonshot 等任意兼容服务
-        //         SimpleApiKey 是 Spring AI 对 API Key 的封装（本质就是包装一个 String）
         OpenAiApi api = OpenAiApi.builder()
                 .baseUrl(baseUrl)
                 .apiKey(new SimpleApiKey(apiKey))
@@ -80,14 +108,12 @@ public class OpenAIClient implements LLMPort {
                 .build();
 
         // Step 3: 组合成 ChatModel
-        //         注意：new OpenAiChatModel 的构造需要多个依赖（api, options, retryTemplate, ...）
-        //         因此更推荐使用 Builder：
         OpenAiChatModel chatModel = OpenAiChatModel.builder()
                 .openAiApi(api)
                 .defaultOptions(options)
                 .build();
 
-        // Step 4: 用 ChatModel 创建 ChatClient
+        // Step 4: 构建 ChatClient（不含工具）
         return ChatClient.create(chatModel);
     }
 

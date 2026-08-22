@@ -25,7 +25,8 @@ public class AgentAssembler {
                 req.getTemperature(),
                 req.getTopP(),
                 req.getTopK(),
-                req.getMaxTokens());
+                req.getMaxTokens(),
+                req.getTools());
     }
 
     /** 入参 DTO -> 领域实体（更新：仅携带ID与可编辑业务字段，归属/状态/时间戳由领域服务合并保留） */
@@ -43,6 +44,7 @@ public class AgentAssembler {
         agent.setTopP(req.getTopP());
         agent.setTopK(req.getTopK());
         agent.setMaxTokens(req.getMaxTokens());
+        agent.setTools(req.getTools());
         return agent;
     }
 
@@ -61,6 +63,7 @@ public class AgentAssembler {
         res.setTopP(entity.getTopP());
         res.setTopK(entity.getTopK());
         res.setMaxTokens(entity.getMaxTokens());
+        res.setTools(entity.getTools());
         res.setEnabled(entity.getEnabled());
         res.setCreateTime(entity.getCreatedAt());
         res.setUpdateTime(entity.getUpdatedAt());

@@ -49,6 +49,13 @@ public class AgentEntity {
     /** 最大Token数 */
     private Integer maxTokens;
 
+    /**
+     * 工具名称列表。该 Agent 配置启用的工具，如 ["weather", "file"]。
+     * 对话时会传给基础设施层，基础设施根据名称从 ToolRegistry 取出工具实例注册给 LLM。
+     * 数据库存储为 JSON 数组字符串。
+     */
+    private java.util.List<String> tools;
+
     /** 智能体状态：true-启用，false-禁用 */
     private Boolean enabled;
 
@@ -70,7 +77,8 @@ public class AgentEntity {
                                         String systemPrompt, String welcomeMessage, String userId,
                                         String provider, String modelId,
                                         Double temperature, Double topP,
-                                        Integer topK, Integer maxTokens) {
+                                        Integer topK, Integer maxTokens,
+                                        java.util.List<String> tools) {
         AgentEntity agent = new AgentEntity();
         agent.setId(UUID.randomUUID().toString().replace("-", ""));
         agent.setName(name);
@@ -84,6 +92,7 @@ public class AgentEntity {
         agent.setTopP(topP != null ? topP : 0.7);
         agent.setTopK(topK != null ? topK : 50);
         agent.setMaxTokens(maxTokens);
+        agent.setTools(tools);
         agent.setEnabled(true);
         agent.setUserId(userId);
         agent.setCreatedAt(LocalDateTime.now());

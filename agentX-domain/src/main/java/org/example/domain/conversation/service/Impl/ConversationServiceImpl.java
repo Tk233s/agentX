@@ -69,7 +69,7 @@ public class ConversationServiceImpl implements IConversationService {
         // 5. 查历史消息（包含刚存的用户消息）
         List<MessageEntity> messages = messageDomainService.listMessages(sessionId);
 
-        // 6. 组装 LLMEntity
+        // 6. 组装 LLMEntity（含工具装填：从 Agent 配置取工具名列表传给基础设施层）
         LLMEntity llmEntity = LLMEntity.builder()
                 .model(agent.getModelId())
                 .apiKey(apiKey.getApiKey())
@@ -79,6 +79,7 @@ public class ConversationServiceImpl implements IConversationService {
                 .provider(agent.getProvider())
                 .systemPrompt(agent.getSystemPrompt())
                 .messages(messages)
+                .tools(agent.getTools())  // ← 装填工具：Agent 配置的工具名列表
                 .build();
 
         // 7. 调用 LLM，拿到回复

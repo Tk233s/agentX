@@ -59,4 +59,7 @@ public class AgentReq {
 
     /** 创建者用户ID；TODO 临时占位，后续接入登录态（ThreadLocal/上下文）后移除 */
     private String userId;
+
+    /** 启用的工具名称列表，如 ["weather", "file"] */
+    private java.util.List<String> tools;
 }

@@ -1,5 +1,7 @@
 package org.example.infrastructure.adapter.repository;
 
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
 import org.example.domain.agent.adapter.repository.AgentRepository;
 import org.example.domain.agent.model.entity.AgentEntity;
 import org.example.infrastructure.dao.IAgentDao;
@@ -17,6 +19,8 @@ import java.util.stream.Collectors;
  */
 @Repository
 public class AgentRepositoryImpl implements AgentRepository {
+
+    private static final Gson GSON = new Gson();
 
     @Resource
     private IAgentDao agentDao;
@@ -65,6 +69,8 @@ public class AgentRepositoryImpl implements AgentRepository {
         po.setTopP(agent.getTopP());
         po.setTopK(agent.getTopK());
         po.setMaxTokens(agent.getMaxTokens());
+        // List<String> → JSON 字符串存入数据库
+        po.setToolsJson(agent.getTools() != null ? GSON.toJson(agent.getTools()) : null);
         po.setEnabled(agent.getEnabled());
         po.setUserId(agent.getUserId());
         po.setCreatedAt(agent.getCreatedAt());
@@ -90,6 +96,10 @@ public class AgentRepositoryImpl implements AgentRepository {
         agent.setTopP(po.getTopP());
         agent.setTopK(po.getTopK());
         agent.setMaxTokens(po.getMaxTokens());
+        // JSON 字符串 → List<String>
+        if (po.getToolsJson() != null && !po.getToolsJson().isEmpty()) {
+            agent.setTools(GSON.fromJson(po.getToolsJson(), new TypeToken<List<String>>() {}.getType()));
+        }
         agent.setEnabled(po.getEnabled());
         agent.setUserId(po.getUserId());
         agent.setCreatedAt(po.getCreatedAt());

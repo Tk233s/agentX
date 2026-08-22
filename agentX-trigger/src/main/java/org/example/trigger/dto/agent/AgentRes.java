@@ -47,6 +47,9 @@ public class AgentRes {
     /** 最大Token数 */
     private Integer maxTokens;
 
+    /** 启用的工具名称列表 */
+    private java.util.List<String> tools;
+
     /** 智能体状态 */
     private Boolean enabled;
 

@@ -46,6 +46,9 @@ public class AgentPO {
     /** 最大Token数 */
     private Integer maxTokens;
 
+    /** 工具名称列表（JSON 数组字符串）：如 ["weather", "file"] */
+    private String toolsJson;
+
     /** 智能体状态：1-启用，0-禁用 */
     private Boolean enabled;
 

@@ -5,11 +5,11 @@
     <insert id="insert" parameterType="org.example.infrastructure.dao.po.AgentPO">
         INSERT INTO agent
             (id, name, avatar, description, system_prompt, welcome_message,
-             provider, model_id, temperature, top_p, top_k, max_tokens,
+             provider, model_id, temperature, top_p, top_k, max_tokens, tools_json,
              enabled, user_id, created_at, updated_at)
         VALUES
             (#{id}, #{name}, #{avatar}, #{description}, #{systemPrompt}, #{welcomeMessage},
-             #{provider}, #{modelId}, #{temperature}, #{topP}, #{topK}, #{maxTokens},
+             #{provider}, #{modelId}, #{temperature}, #{topP}, #{topK}, #{maxTokens}, #{toolsJson},
              #{enabled}, #{userId}, #{createdAt}, #{updatedAt})
     </insert>
 
@@ -26,6 +26,7 @@
             top_p           = #{topP},
             top_k           = #{topK},
             max_tokens      = #{maxTokens},
+            tools_json      = #{toolsJson},
             enabled         = #{enabled},
             user_id         = #{userId},
             updated_at      = #{updatedAt}
@@ -39,7 +40,7 @@
 
     <select id="queryById" parameterType="java.lang.String" resultType="org.example.infrastructure.dao.po.AgentPO">
         SELECT id, name, avatar, description, system_prompt, welcome_message,
-               provider, model_id, temperature, top_p, top_k, max_tokens,
+               provider, model_id, temperature, top_p, top_k, max_tokens, tools_json,
                enabled, user_id, created_at, updated_at
         FROM agent
         WHERE id = #{id}
@@ -47,7 +48,7 @@
 
     <select id="queryByUserId" parameterType="java.lang.String" resultType="org.example.infrastructure.dao.po.AgentPO">
         SELECT id, name, avatar, description, system_prompt, welcome_message,
-               provider, model_id, temperature, top_p, top_k, max_tokens,
+               provider, model_id, temperature, top_p, top_k, max_tokens, tools_json,
                enabled, user_id, created_at, updated_at
         FROM agent
         WHERE user_id = #{userId}
