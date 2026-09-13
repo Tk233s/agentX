@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.example.infrastructure.dao.IUserDao">
+
+    <select id="queryByUsername" parameterType="java.lang.String" resultType="org.example.infrastructure.dao.po.UserPO">
+        SELECT id, username, password_hash, created_at, updated_at
+        FROM user
+        WHERE username = #{username}
+        LIMIT 1
+    </select>
+
+</mapper>
