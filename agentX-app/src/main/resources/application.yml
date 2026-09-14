@@ -3,3 +3,10 @@ spring:
     name: agentX-app
   profiles:
     active: dev
+
+# 认证过滤器配置；白名单内的接口不需要携带Token
+auth:
+  filter:
+    enabled: true
+    exclude-paths:
+      - /auth/login
