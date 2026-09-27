@@ -22,7 +22,7 @@ public interface IMessageDomainService {
     /**
      * 查询会话历史消息
      */
-    List<MessageEntity> listMessages(String sessionId);
+    List<MessageEntity> listMessages(String sessionId, String userId);
 
     /**
      * 删除会话所有消息

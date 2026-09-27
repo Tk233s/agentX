@@ -17,17 +17,17 @@ public interface ISessionDomainService {
     /**
      * 重命名会话
      */
-    SessionEntity updateSessionTitle(String id, String title);
+    SessionEntity updateSessionTitle(String id, String userId, String title);
 
     /**
      * 删除会话（级联删除消息由Message仓储负责）
      */
-    void deleteSession(String id);
+    void deleteSession(String id, String userId);
 
     /**
      * 根据ID查询会话
      */
-    SessionEntity getSession(String id);
+    SessionEntity getSession(String id, String userId);
 
     /**
      * 根据用户ID查询所有会话

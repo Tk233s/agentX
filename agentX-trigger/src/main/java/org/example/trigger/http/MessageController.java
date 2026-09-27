@@ -4,6 +4,7 @@ import org.example.api.response.Response;
 import org.example.domain.message.model.entity.MessageEntity;
 import org.example.domain.message.service.IMessageDomainService;
 import org.example.trigger.dto.message.MessageRes;
+import org.example.types.context.UserContext;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.annotation.Resource;
@@ -25,7 +26,8 @@ public class MessageController {
      */
     @GetMapping("/list")
     public Response<List<MessageRes>> listMessages(@RequestParam String sessionId) {
-        List<MessageEntity> messages = messageDomainService.listMessages(sessionId);
+        List<MessageEntity> messages = messageDomainService.listMessages(
+                sessionId, UserContext.requireCurrentUserId());
         return Response.success(MessageAssembler.toResList(messages));
     }
 }

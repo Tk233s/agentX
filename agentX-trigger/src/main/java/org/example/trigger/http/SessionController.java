@@ -5,6 +5,7 @@ import org.example.domain.session.model.entity.SessionEntity;
 import org.example.domain.session.service.ISessionDomainService;
 import org.example.trigger.dto.session.SessionReq;
 import org.example.trigger.dto.session.SessionRes;
+import org.example.types.context.UserContext;
 import org.example.types.enums.ResponseCode;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -28,7 +29,7 @@ public class SessionController {
      */
     @PostMapping("/create")
     public Response<SessionRes> createSession(@RequestBody @Validated SessionReq req) {
-        SessionEntity session = SessionAssembler.toEntity(req);
+        SessionEntity session = SessionAssembler.toEntity(req, UserContext.requireCurrentUserId());
         SessionEntity created = sessionDomainService.createSession(session);
         return Response.success(SessionAssembler.toRes(created));
     }
@@ -38,7 +39,7 @@ public class SessionController {
      */
     @PostMapping("/rename")
     public Response<SessionRes> renameSession(@RequestParam String id, @RequestParam String title) {
-        SessionEntity updated = sessionDomainService.updateSessionTitle(id, title);
+        SessionEntity updated = sessionDomainService.updateSessionTitle(id, UserContext.requireCurrentUserId(), title);
         return Response.success(SessionAssembler.toRes(updated));
     }
 
@@ -47,7 +48,7 @@ public class SessionController {
      */
     @PostMapping("/delete")
     public Response<Void> deleteSession(@RequestParam String id) {
-        sessionDomainService.deleteSession(id);
+        sessionDomainService.deleteSession(id, UserContext.requireCurrentUserId());
         return Response.success();
     }
 
@@ -56,7 +57,7 @@ public class SessionController {
      */
     @GetMapping("/get")
     public Response<SessionRes> getSession(@RequestParam String id) {
-        SessionEntity session = sessionDomainService.getSession(id);
+        SessionEntity session = sessionDomainService.getSession(id, UserContext.requireCurrentUserId());
         if (session == null) {
             return Response.error(ResponseCode.ILLEGAL_PARAMETER.getCode(), "会话不存在");
         }
@@ -67,8 +68,8 @@ public class SessionController {
      * 根据用户ID查询所有会话
      */
     @GetMapping("/list")
-    public Response<List<SessionRes>> listSessions(@RequestParam String userId) {
-        List<SessionEntity> sessions = sessionDomainService.listSessions(userId);
+    public Response<List<SessionRes>> listSessions() {
+        List<SessionEntity> sessions = sessionDomainService.listSessions(UserContext.requireCurrentUserId());
         List<SessionRes> resList = sessions.stream()
                 .map(SessionAssembler::toRes)
                 .collect(Collectors.toList());

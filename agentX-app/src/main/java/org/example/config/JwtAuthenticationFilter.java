@@ -8,7 +8,8 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.example.api.response.Response;
 import org.example.domain.auth.adapter.port.TokenPort;
 import org.example.domain.auth.model.entity.UserEntity;
-import org.example.infrastructure.auth.UserContext;
+import org.example.types.context.UserContext;
+import org.example.types.enums.ResponseCode;
 import org.example.types.exception.AppException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -62,6 +63,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             writeUnauthorized(response, e.getInfo());
             return;
         }
+        if (user == null || !StringUtils.hasText(user.getId())) {
+            writeUnauthorized(response, ResponseCode.UNAUTHORIZED.getInfo());
+            return;
+        }
 
         UserContext.setCurrentUserId(user.getId());
         try {
@@ -94,6 +99,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-        response.getWriter().write(objectMapper.writeValueAsString(Response.error("401", message)));
+        response.getWriter().write(objectMapper.writeValueAsString(
+                Response.error(ResponseCode.UNAUTHORIZED.getCode(), message)));
     }
 }

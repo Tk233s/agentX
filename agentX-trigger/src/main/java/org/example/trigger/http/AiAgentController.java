@@ -6,6 +6,7 @@ import org.example.domain.agent.service.IAgentDomainService;
 import org.example.trigger.dto.agent.AgentReq;
 import org.example.trigger.dto.agent.AgentRes;
 import org.example.trigger.dto.agent.UpdateGroup;
+import org.example.types.context.UserContext;
 import org.example.types.enums.ResponseCode;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -37,7 +38,7 @@ public class AiAgentController {
     @PostMapping("/create")
     public Response<AgentRes> createAgent(@RequestBody @Validated AgentReq agentReq) {
         // 1. 入参 DTO -> 领域实体（初始状态由领域工厂统一生成）
-        AgentEntity agent = AgentAssembler.toEntity(agentReq);
+        AgentEntity agent = AgentAssembler.toEntity(agentReq, UserContext.requireCurrentUserId());
         // 2. 调用领域服务执行创建（业务校验 + 落库）
         AgentEntity created = agentDomainService.createAgent(agent);
         // 3. 领域实体 -> 出参 DTO，包统一响应返回
@@ -54,7 +55,7 @@ public class AiAgentController {
         // 1. 入参 DTO -> 领域实体（仅携带ID与可编辑业务字段）
         AgentEntity agent = AgentAssembler.toUpdateEntity(agentReq);
         // 2. 调用领域服务执行更新（校验 + 合并保留归属/状态/时间戳 + 落库）
-        AgentEntity updated = agentDomainService.updateAgent(agent);
+        AgentEntity updated = agentDomainService.updateAgent(agent, UserContext.requireCurrentUserId());
         // 3. 领域实体 -> 出参 DTO，包统一响应返回
         return Response.success(AgentAssembler.toRes(updated));
     }
@@ -66,7 +67,7 @@ public class AiAgentController {
      */
     @PostMapping("/delete")
     public Response<Void> deleteAgent(@RequestParam String id) {
-        agentDomainService.deleteAgent(id);
+        agentDomainService.deleteAgent(id, UserContext.requireCurrentUserId());
         return Response.success();
     }
 
@@ -77,7 +78,7 @@ public class AiAgentController {
      */
     @GetMapping("/get")
     public Response<AgentRes> getAgent(@RequestParam String id) {
-        AgentEntity agent = agentDomainService.getAgent(id);
+        AgentEntity agent = agentDomainService.getAgent(id, UserContext.requireCurrentUserId());
         if (agent == null) {
             return Response.error(ResponseCode.ILLEGAL_PARAMETER.getCode(), "智能体不存在");
         }
@@ -90,8 +91,8 @@ public class AiAgentController {
      * @return 智能体信息列表
      */
     @GetMapping("/list")
-    public Response<List<AgentRes>> listAgents(@RequestParam String userId) {
-        List<AgentEntity> agents = agentDomainService.listAgents(userId);
+    public Response<List<AgentRes>> listAgents() {
+        List<AgentEntity> agents = agentDomainService.listAgents(UserContext.requireCurrentUserId());
         List<AgentRes> resList = agents.stream()
                 .map(AgentAssembler::toRes)
                 .collect(Collectors.toList());

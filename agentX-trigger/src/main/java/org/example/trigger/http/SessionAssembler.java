@@ -10,10 +10,10 @@ import org.example.trigger.dto.session.SessionRes;
 public class SessionAssembler {
 
     /** 入参 -> 领域实体（创建） */
-    public static SessionEntity toEntity(SessionReq req) {
+    public static SessionEntity toEntity(SessionReq req, String userId) {
         return SessionEntity.createNew(
                 req.getAgentId(),
-                req.getUserId(),
+                userId,
                 req.getTitle());
     }
 

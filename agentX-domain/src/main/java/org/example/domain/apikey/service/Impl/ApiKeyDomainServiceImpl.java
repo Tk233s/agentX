@@ -29,12 +29,9 @@ public class ApiKeyDomainServiceImpl implements IApiKeyDomainService {
     }
 
     @Transactional
-    public ApiKeyEntity updateApiKey(ApiKeyEntity apiKey) {
+    public ApiKeyEntity updateApiKey(ApiKeyEntity apiKey, String userId) {
         apiKey.validate();
-        ApiKeyEntity existing = apiKeyRepository.findById(apiKey.getId());
-        if (existing == null) {
-            throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "API密钥不存在");
-        }
+        ApiKeyEntity existing = requireOwnedApiKey(apiKey.getId(), userId);
         // 保留不可覆盖字段
         apiKey.setUserId(existing.getUserId());
         apiKey.setCreatedAt(existing.getCreatedAt());
@@ -44,15 +41,21 @@ public class ApiKeyDomainServiceImpl implements IApiKeyDomainService {
     }
 
     @Transactional
-    public void deleteApiKey(String id) {
+    public void deleteApiKey(String id, String userId) {
+        requireOwnedApiKey(id, userId);
         int rows = apiKeyRepository.deleteById(id);
         if (rows == 0) {
             throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "API密钥不存在");
         }
     }
 
-    public ApiKeyEntity getApiKey(String id) {
-        return apiKeyRepository.findById(id);
+    public ApiKeyEntity getApiKey(String id, String userId) {
+        ApiKeyEntity apiKey = apiKeyRepository.findById(id);
+        if (apiKey == null) {
+            return null;
+        }
+        checkOwner(apiKey, userId);
+        return apiKey;
     }
 
     public List<ApiKeyEntity> listApiKeys(String userId) {
@@ -61,5 +64,20 @@ public class ApiKeyDomainServiceImpl implements IApiKeyDomainService {
 
     public ApiKeyEntity getApiKeyByProvider(String userId, String provider) {
         return apiKeyRepository.findByUserIdAndProvider(userId, provider);
+    }
+
+    private ApiKeyEntity requireOwnedApiKey(String id, String userId) {
+        ApiKeyEntity apiKey = apiKeyRepository.findById(id);
+        if (apiKey == null) {
+            throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "API密钥不存在");
+        }
+        checkOwner(apiKey, userId);
+        return apiKey;
+    }
+
+    private void checkOwner(ApiKeyEntity apiKey, String userId) {
+        if (userId == null || !userId.equals(apiKey.getUserId())) {
+            throw new AppException(ResponseCode.FORBIDDEN.getCode(), "无权访问该API密钥");
+        }
     }
 }

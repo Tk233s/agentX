@@ -5,6 +5,8 @@ import org.example.types.enums.ResponseCode;
 import org.example.types.exception.AppException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -23,9 +25,15 @@ public class GlobalExceptionHandler {
      * 业务异常：领域层抛出的 AppException，直接透传 code + info
      */
     @ExceptionHandler(AppException.class)
-    public Response<Void> handleAppException(AppException e) {
+    public ResponseEntity<Response<Void>> handleAppException(AppException e) {
         log.warn("业务异常: code={}, info={}", e.getCode(), e.getInfo());
-        return Response.error(e.getCode(), e.getInfo());
+        HttpStatus status = HttpStatus.OK;
+        if (ResponseCode.UNAUTHORIZED.getCode().equals(e.getCode())) {
+            status = HttpStatus.UNAUTHORIZED;
+        } else if (ResponseCode.FORBIDDEN.getCode().equals(e.getCode())) {
+            status = HttpStatus.FORBIDDEN;
+        }
+        return ResponseEntity.status(status).body(Response.error(e.getCode(), e.getInfo()));
     }
 
     /**

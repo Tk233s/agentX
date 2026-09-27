@@ -26,6 +26,4 @@ public class ApiKeyReq {
     /** 自定义API地址（代理/中转） */
     private String baseUrl;
 
-    /** 创建者用户ID；TODO 临时占位，后续接入登录态后移除 */
-    private String userId;
 }

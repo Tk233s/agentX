@@ -17,17 +17,17 @@ public interface IApiKeyDomainService {
     /**
      * 更新API密钥
      */
-    ApiKeyEntity updateApiKey(ApiKeyEntity apiKey);
+    ApiKeyEntity updateApiKey(ApiKeyEntity apiKey, String userId);
 
     /**
      * 根据ID删除API密钥
      */
-    void deleteApiKey(String id);
+    void deleteApiKey(String id, String userId);
 
     /**
      * 根据ID查询API密钥
      */
-    ApiKeyEntity getApiKey(String id);
+    ApiKeyEntity getApiKey(String id, String userId);
 
     /**
      * 根据用户ID查询所有密钥

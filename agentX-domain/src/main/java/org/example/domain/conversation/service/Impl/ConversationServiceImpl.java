@@ -45,29 +45,29 @@ public class ConversationServiceImpl implements IConversationService {
     public String doConversation(String sessionId, String userId, String content) {
 
         // 1. 查会话 → 拿到 agentId
-        SessionEntity session = sessionDomainService.getSession(sessionId);
+        SessionEntity session = sessionDomainService.getSession(sessionId, userId);
         if (session == null) {
             throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "会话不存在");
         }
 
-        // 2. 存用户消息到 message 表
-        messageDomainService.saveUserMessage(sessionId, content);
-
-        // 3. 查 Agent → 拿 systemPrompt、modelId、provider、temperature 等
-        AgentEntity agent = agentDomainService.getAgent(session.getAgentId());
+        // 2. 查 Agent → 拿 systemPrompt、modelId、provider、temperature 等
+        AgentEntity agent = agentDomainService.getAgent(session.getAgentId(), userId);
         if (agent == null) {
             throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "智能体不存在");
         }
 
-        // 4. 查 ApiKey → 用 userId + provider 拿到 apiKey、baseUrl
+        // 3. 查 ApiKey → 用 userId + provider 拿到 apiKey、baseUrl
         ApiKeyEntity apiKey = apiKeyDomainService.getApiKeyByProvider(userId, agent.getProvider());
         if (apiKey == null) {
             throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(),
                     "未配置服务商[" + agent.getProvider() + "]的API密钥");
         }
 
+        // 4. 存用户消息到 message 表
+        messageDomainService.saveUserMessage(sessionId, content);
+
         // 5. 查历史消息（包含刚存的用户消息）
-        List<MessageEntity> messages = messageDomainService.listMessages(sessionId);
+        List<MessageEntity> messages = messageDomainService.listMessages(sessionId, userId);
 
         // 6. 组装 LLMEntity（含工具装填：从 Agent 配置取工具名列表传给基础设施层）
         LLMEntity llmEntity = LLMEntity.builder()

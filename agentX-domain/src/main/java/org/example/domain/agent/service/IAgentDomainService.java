@@ -19,22 +19,25 @@ public interface IAgentDomainService {
     /**
      * 更新智能体
      * @param agent 待更新的智能体实体（需携带ID）
+     * @param userId 当前登录用户ID
      * @return 已落库的智能体实体
      */
-    public AgentEntity updateAgent(AgentEntity agent);
+    public AgentEntity updateAgent(AgentEntity agent, String userId);
 
     /**
      * 根据ID删除智能体
      * @param id 智能体ID
+     * @param userId 当前登录用户ID
      */
-    public void deleteAgent(String id);
+    public void deleteAgent(String id, String userId);
 
     /**
      * 根据ID查询智能体
      * @param id 智能体ID
+     * @param userId 当前登录用户ID
      * @return 智能体实体，不存在返回null
      */
-    public AgentEntity getAgent(String id);
+    public AgentEntity getAgent(String id, String userId);
 
     /**
      * 根据创建者用户ID查询智能体列表

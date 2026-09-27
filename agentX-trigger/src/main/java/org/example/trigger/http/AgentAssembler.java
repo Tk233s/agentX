@@ -12,14 +12,14 @@ import org.example.trigger.dto.agent.AgentRes;
 public class AgentAssembler {
 
     /** 入参 DTO -> 领域实体（创建：初始状态由领域工厂统一生成） */
-    public static AgentEntity toEntity(AgentReq req) {
+    public static AgentEntity toEntity(AgentReq req, String userId) {
         return AgentEntity.createNew(
                 req.getName(),
                 req.getAvatar(),
                 req.getDescription(),
                 req.getSystemPrompt(),
                 req.getWelcomeMessage(),
-                req.getUserId(),
+                userId,
                 req.getProvider(),
                 req.getModelId(),
                 req.getTemperature(),

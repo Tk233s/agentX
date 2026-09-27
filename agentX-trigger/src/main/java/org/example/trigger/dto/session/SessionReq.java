@@ -20,6 +20,4 @@ public class SessionReq {
     @NotBlank(message = "智能体ID不能为空")
     private String agentId;
 
-    /** 用户ID；TODO 临时占位，后续接入登录态后移除 */
-    private String userId;
 }

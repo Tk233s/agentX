@@ -10,9 +10,9 @@ import org.example.trigger.dto.apikey.ApiKeyRes;
 public class ApiKeyAssembler {
 
     /** 入参 DTO -> 领域实体（创建） */
-    public static ApiKeyEntity toEntity(ApiKeyReq req) {
+    public static ApiKeyEntity toEntity(ApiKeyReq req, String userId) {
         return ApiKeyEntity.createNew(
-                req.getUserId(),
+                userId,
                 req.getProvider(),
                 req.getApiKey(),
                 req.getBaseUrl());

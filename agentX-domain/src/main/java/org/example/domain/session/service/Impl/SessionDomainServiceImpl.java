@@ -1,5 +1,7 @@
 package org.example.domain.session.service.Impl;
 
+import org.example.domain.agent.adapter.repository.AgentRepository;
+import org.example.domain.agent.model.entity.AgentEntity;
 import org.example.domain.message.adapter.repository.MessageRepository;
 import org.example.domain.session.adapter.repository.SessionRepository;
 import org.example.domain.session.model.entity.SessionEntity;
@@ -25,18 +27,28 @@ public class SessionDomainServiceImpl implements ISessionDomainService {
     @Resource
     private MessageRepository messageRepository;
 
+    @Resource
+    private AgentRepository agentRepository;
+
     @Transactional
     public SessionEntity createSession(SessionEntity session) {
+        if (session.getUserId() == null || session.getUserId().isBlank()) {
+            throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "用户ID不能为空");
+        }
+        AgentEntity agent = agentRepository.findById(session.getAgentId());
+        if (agent == null) {
+            throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "智能体不存在");
+        }
+        if (!session.getUserId().equals(agent.getUserId())) {
+            throw new AppException(ResponseCode.FORBIDDEN.getCode(), "无权使用该智能体");
+        }
         sessionRepository.save(session);
         return session;
     }
 
     @Transactional
-    public SessionEntity updateSessionTitle(String id, String title) {
-        SessionEntity existing = sessionRepository.findById(id);
-        if (existing == null) {
-            throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "会话不存在");
-        }
+    public SessionEntity updateSessionTitle(String id, String userId, String title) {
+        SessionEntity existing = requireOwnedSession(id, userId);
         existing.setTitle(title);
         existing.setUpdatedAt(LocalDateTime.now());
         sessionRepository.update(existing);
@@ -47,7 +59,8 @@ public class SessionDomainServiceImpl implements ISessionDomainService {
      * 删除会话：先级联删除该会话下的所有消息，再删除会话本身
      */
     @Transactional
-    public void deleteSession(String id) {
+    public void deleteSession(String id, String userId) {
+        requireOwnedSession(id, userId);
         // 先删消息
         messageRepository.deleteBySessionId(id);
         // 再删会话
@@ -57,11 +70,31 @@ public class SessionDomainServiceImpl implements ISessionDomainService {
         }
     }
 
-    public SessionEntity getSession(String id) {
-        return sessionRepository.findById(id);
+    public SessionEntity getSession(String id, String userId) {
+        SessionEntity session = sessionRepository.findById(id);
+        if (session == null) {
+            return null;
+        }
+        checkOwner(session, userId);
+        return session;
     }
 
     public List<SessionEntity> listSessions(String userId) {
         return sessionRepository.queryByUserId(userId);
+    }
+
+    private SessionEntity requireOwnedSession(String id, String userId) {
+        SessionEntity session = sessionRepository.findById(id);
+        if (session == null) {
+            throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "会话不存在");
+        }
+        checkOwner(session, userId);
+        return session;
+    }
+
+    private void checkOwner(SessionEntity session, String userId) {
+        if (userId == null || !userId.equals(session.getUserId())) {
+            throw new AppException(ResponseCode.FORBIDDEN.getCode(), "无权访问该会话");
+        }
     }
 }

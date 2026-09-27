@@ -3,6 +3,7 @@ package org.example.trigger.http;
 import org.example.api.response.Response;
 import org.example.domain.conversation.service.IConversationService;
 import org.example.trigger.dto.conversation.ConversationReq;
+import org.example.types.context.UserContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -27,7 +28,7 @@ public class ConversationController {
     public Response<String> chat(@RequestBody @Validated ConversationReq req) {
         String reply = conversationService.doConversation(
                 req.getSessionId(),
-                req.getUserId(),
+                UserContext.requireCurrentUserId(),
                 req.getContent());
         return Response.success(reply);
     }
