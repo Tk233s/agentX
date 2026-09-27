@@ -26,6 +26,7 @@ public class LLMClientFactory implements LLMPort {
         return getClient(llmEntity.getProvider()).stream(llmEntity);
     }
 
+    //根据供应商选择不同的服务
     private LLMPort getClient(String provider) {
         if ("openai".equals(provider)) {
             return openAIClient;

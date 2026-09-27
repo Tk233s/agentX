@@ -33,22 +33,23 @@ public class OpenAIClient implements LLMPort {
     @Override
     public String call(LLMEntity llmEntity) {
 
-        // 第 1 步：从 ToolRegistry 取出该 Agent 配置的工具实例
+        // 从 ToolRegistry 取出该 Agent 配置的工具实例
         System.out.println("[DEBUG] LLMEntity.tools = " + llmEntity.getTools());
         List<Object> tools = toolRegistry.getTools(llmEntity.getTools());
         System.out.println("[DEBUG] ToolRegistry 返回工具数 = " + tools.size());
 
-        // 第 2 步：构建基础 ChatClient
+        // 构建基础 ChatClient
         ChatClient baseClient = buildChatClient(llmEntity.getModel(),
                                                   llmEntity.getApiKey(),
                                                   llmEntity.getBaseUrl(),
                                                   llmEntity.getTemperature(),
                                                   llmEntity.getMaxTokens());
 
-        // 第 3 步：组装消息并调用
-        //         Spring AI 1.0.0 使用 .tools() 在调用时动态注册工具
-        //         如果 tools 为空，不传 .tools()，走纯对话
+        // 组装消息并调用
+        //构建提示词
         var promptSpec = baseClient.prompt(buildPrompt(llmEntity.getSystemPrompt(), llmEntity.getMessages()));
+        // Spring AI 1.0.0 使用 .tools() 在调用时动态注册工具
+        // 如果 tools 为空，不传 .tools()，走纯对话
         if (!tools.isEmpty()) {
             System.out.println("[DEBUG] 注册工具数：" + tools.size() + "，类型：" + tools.stream().map(t -> t.getClass().getSimpleName()).toList());
             promptSpec = promptSpec.tools(tools.toArray(new Object[0]));
