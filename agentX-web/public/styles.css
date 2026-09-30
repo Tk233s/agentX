@@ -872,6 +872,22 @@ textarea:disabled {
   animation-delay: 0.28s;
 }
 
+.streaming-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 3px;
+  vertical-align: -0.16em;
+  background: currentColor;
+  animation: streaming-cursor-blink 0.72s steps(2, start) infinite;
+}
+
+@keyframes streaming-cursor-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
 @keyframes typing {
   0%,
   70%,

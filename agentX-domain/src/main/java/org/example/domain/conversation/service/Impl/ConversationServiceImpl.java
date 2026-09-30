@@ -15,6 +15,9 @@ import org.example.types.enums.ResponseCode;
 import org.example.types.exception.AppException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import jakarta.annotation.Resource;
 import java.util.List;
@@ -43,7 +46,39 @@ public class ConversationServiceImpl implements IConversationService {
 
     @Override
     public String doConversation(String sessionId, String userId, String content) {
+        LLMEntity llmEntity = prepareConversation(sessionId, userId, content);
 
+        // 调用 LLM，拿到完整回复后落库
+        String reply = llmPort.call(llmEntity);
+        messageDomainService.saveAssistantMessage(sessionId, reply, 0);
+        return reply;
+    }
+
+    @Override
+    public Flux<String> streamConversation(String sessionId, String userId, String content) {
+        LLMEntity llmEntity = prepareConversation(sessionId, userId, content);
+        StringBuilder reply = new StringBuilder();
+        Flux<String> stream = llmPort.stream(llmEntity);
+        if (stream == null) {
+            throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(),
+                    "服务商[" + llmEntity.getProvider() + "]暂不支持流式对话");
+        }
+
+        return stream
+                .doOnNext(reply::append)
+                // 流结束后在弹性线程执行阻塞式数据库写入，并把完整回复持久化
+                .publishOn(Schedulers.boundedElastic())
+                .concatWith(Mono.fromRunnable(() -> {
+                    if (!reply.isEmpty()) {
+                        messageDomainService.saveAssistantMessage(sessionId, reply.toString(), 0);
+                    }
+                }));
+    }
+
+    /**
+     * 装载一次对话所需的会话、Agent、API Key 和历史消息。
+     */
+    private LLMEntity prepareConversation(String sessionId, String userId, String content) {
         // 1. 查会话 → 拿到 agentId
         SessionEntity session = sessionDomainService.getSession(sessionId, userId);
         if (session == null) {
@@ -82,13 +117,6 @@ public class ConversationServiceImpl implements IConversationService {
                 .tools(agent.getTools())  // ← 装填工具：Agent 配置的工具名列表
                 .build();
 
-        // 7. 调用 LLM，拿到回复
-        String reply = llmPort.call(llmEntity);
-
-        // 8. 存 AI 回复到 message 表（tokens 暂时存 0，后续再算）
-        messageDomainService.saveAssistantMessage(sessionId, reply, 0);
-
-        // 9. 返回回复
-        return reply;
+        return llmEntity;
     }
 }

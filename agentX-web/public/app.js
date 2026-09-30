@@ -42,6 +42,8 @@ const state = {
   chatBusy: false,
   sidebarOpen: false,
   pendingReply: false,
+  streamingContent: "",
+  streamAbortController: null,
 };
 
 class ApiError extends Error {
@@ -76,6 +78,7 @@ function readJson(key) {
 }
 
 function clearAuth() {
+  resetStreamingState();
   localStorage.removeItem(AUTH_KEY);
   sessionStorage.removeItem(AGENT_KEY);
   sessionStorage.removeItem(SESSION_KEY);
@@ -87,7 +90,6 @@ function clearAuth() {
   state.activeSessionId = "";
   state.view = "chat";
   state.modal = null;
-  state.pendingReply = false;
 }
 
 async function apiRequest(path, options = {}) {
@@ -136,6 +138,128 @@ async function apiRequest(path, options = {}) {
   }
 
   return payload?.data;
+}
+
+function cancelActiveStream() {
+  if (state.streamAbortController) {
+    state.streamAbortController.abort();
+    state.streamAbortController = null;
+  }
+}
+
+function resetStreamingState() {
+  cancelActiveStream();
+  state.chatBusy = false;
+  state.pendingReply = false;
+  state.streamingContent = "";
+}
+
+function parseSseEvent(block) {
+  let event = "message";
+  const data = [];
+
+  for (const line of block.split(/\r?\n/)) {
+    if (!line || line.startsWith(":")) {
+      continue;
+    }
+
+    const separator = line.indexOf(":");
+    const field = separator === -1 ? line : line.slice(0, separator);
+    let value = separator === -1 ? "" : line.slice(separator + 1);
+    if (value.startsWith(" ")) {
+      value = value.slice(1);
+    }
+
+    if (field === "event") {
+      event = value;
+    } else if (field === "data") {
+      data.push(value);
+    }
+  }
+
+  return {
+    event,
+    data: data.join("\n"),
+  };
+}
+
+async function streamApiRequest(path, body, onEvent, signal) {
+  const headers = {
+    Accept: "text/event-stream",
+    "Content-Type": "application/json",
+  };
+
+  if (state.auth?.token) {
+    headers.Authorization = `Bearer ${state.auth.token}`;
+  }
+
+  let response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+      signal,
+    });
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw error;
+    }
+    throw new ApiError("无法连接后端服务，请确认 8091 端口已经启动");
+  }
+
+  if (response.status === 401) {
+    const payload = await response.json().catch(() => null);
+    throw new ApiError(payload?.info || "登录已过期，请重新登录", "401");
+  }
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new ApiError(payload?.info || `请求失败，HTTP ${response.status}`, String(response.status));
+  }
+
+  if (!response.body) {
+    throw new ApiError("当前浏览器不支持流式响应");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  const dispatch = (block) => {
+    const sseEvent = parseSseEvent(block);
+    if (sseEvent.event === "error") {
+      throw new ApiError(sseEvent.data || "流式对话失败");
+    }
+    onEvent(sseEvent);
+  };
+
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) {
+        break;
+      }
+
+      buffer += decoder.decode(value, { stream: true });
+      let boundary = buffer.match(/\r?\n\r?\n/);
+      while (boundary && boundary.index !== undefined) {
+        const block = buffer.slice(0, boundary.index);
+        buffer = buffer.slice(boundary.index + boundary[0].length);
+        if (block.trim()) {
+          dispatch(block);
+        }
+        boundary = buffer.match(/\r?\n\r?\n/);
+      }
+    }
+
+    buffer += decoder.decode();
+    if (buffer.trim()) {
+      dispatch(buffer);
+    }
+  } finally {
+    reader.releaseLock();
+  }
 }
 
 function activeAgent() {
@@ -351,6 +475,12 @@ function renderSessions() {
 
 function renderMessage(message, pending = false) {
   const isUser = message.role === "user";
+  const content = pending
+    ? message.content
+      ? `${escapeHtml(message.content)}<span class="streaming-cursor" aria-hidden="true"></span>`
+      : '<span class="typing-dots" aria-label="正在生成回复"><span></span><span></span><span></span></span>'
+    : escapeHtml(message.content);
+
   return `
     <article class="message-row ${isUser ? "user" : "assistant"} ${pending ? "pending" : ""}">
       <div class="message-avatar">
@@ -361,13 +491,7 @@ function renderMessage(message, pending = false) {
           <span class="message-role">${isUser ? "你" : "Agent"}</span>
           <span>${escapeHtml(formatMessageTime(message.createTime))}</span>
         </div>
-        <div class="message-bubble">
-          ${
-            pending
-              ? '<span class="typing-dots" aria-label="正在生成回复"><span></span><span></span><span></span></span>'
-              : escapeHtml(message.content)
-          }
-        </div>
+        <div class="message-bubble">${content}</div>
       </div>
     </article>
   `;
@@ -429,7 +553,14 @@ function renderChatContent() {
     ${state.messages.map((message) => renderMessage(message)).join("")}
     ${
       state.pendingReply
-        ? renderMessage({ role: "assistant", content: "" }, true)
+        ? renderMessage(
+            {
+              role: "assistant",
+              content: state.streamingContent,
+              createTime: new Date().toISOString(),
+            },
+            true,
+          )
         : ""
     }
   `;
@@ -1113,6 +1244,31 @@ function scrollMessagesToBottom({ behavior = "auto" } = {}) {
   }
 }
 
+let streamingRenderFrame = 0;
+
+function renderStreamingReply() {
+  streamingRenderFrame = 0;
+
+  const bubble = document.querySelector(".message-row.assistant.pending .message-bubble");
+  if (!bubble || !state.streamingContent) {
+    return;
+  }
+
+  bubble.textContent = state.streamingContent;
+  const cursor = document.createElement("span");
+  cursor.className = "streaming-cursor";
+  cursor.setAttribute("aria-hidden", "true");
+  bubble.append(cursor);
+  scrollMessagesToBottom();
+}
+
+function scheduleStreamingRender() {
+  if (streamingRenderFrame) {
+    return;
+  }
+  streamingRenderFrame = window.requestAnimationFrame(renderStreamingReply);
+}
+
 async function bootstrap() {
   if (!state.auth?.token) {
     renderLogin();
@@ -1206,6 +1362,7 @@ async function selectSession(sessionId) {
     return;
   }
 
+  resetStreamingState();
   state.activeSessionId = session.id;
   state.activeAgentId = session.agentId || state.activeAgentId;
   state.view = "chat";
@@ -1231,6 +1388,7 @@ async function selectAgent(agentId) {
     return;
   }
 
+  resetStreamingState();
   state.activeAgentId = agentId;
   state.view = "chat";
   const latestSession = state.sessions.find((session) => session.agentId === agentId);
@@ -1469,20 +1627,38 @@ async function sendMessage(content) {
   state.messages = [...state.messages, optimisticMessage];
   state.chatBusy = true;
   state.pendingReply = true;
+  state.streamingContent = "";
+  const streamController = new AbortController();
+  state.streamAbortController = streamController;
   renderWorkspace();
 
   try {
-    await apiRequest("/conversation/chat", {
-      method: "POST",
-      body: {
+    await streamApiRequest(
+      "/conversation/stream",
+      {
         sessionId: session.id,
         content: text,
       },
-    });
+      (event) => {
+        if (
+          state.streamAbortController !== streamController ||
+          state.activeSessionId !== session.id ||
+          event.event !== "delta"
+        ) {
+          return;
+        }
+        state.streamingContent += event.data;
+        scheduleStreamingRender();
+      },
+      streamController.signal,
+    );
 
     await loadMessages(session.id, { render: false });
     await refreshWorkspace({ render: false, quiet: true });
   } catch (error) {
+    if (error.name === "AbortError") {
+      return;
+    }
     if (error.code === "401") {
       clearAuth();
       renderLogin(error.message);
@@ -1495,9 +1671,13 @@ async function sendMessage(content) {
       state.messages = state.messages.filter((message) => message.id !== optimisticMessage.id);
     }
   } finally {
-    state.chatBusy = false;
-    state.pendingReply = false;
-    renderWorkspace();
+    if (state.streamAbortController === streamController) {
+      state.streamAbortController = null;
+      state.chatBusy = false;
+      state.pendingReply = false;
+      state.streamingContent = "";
+      renderWorkspace();
+    }
   }
 }
 
