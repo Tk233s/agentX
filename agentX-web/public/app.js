@@ -18,6 +18,8 @@ const icons = {
   pencil: '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>',
   plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
   refresh: '<path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5"/>',
+  save: '<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
   send: '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
   trash: '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/>',
   user: '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
@@ -31,9 +33,11 @@ const state = {
   messages: [],
   activeAgentId: sessionStorage.getItem(AGENT_KEY) || "",
   activeSessionId: sessionStorage.getItem(SESSION_KEY) || "",
+  view: "chat",
   modal: null,
   loginBusy: false,
   workspaceBusy: false,
+  agentBusy: false,
   messagesBusy: false,
   chatBusy: false,
   sidebarOpen: false,
@@ -81,6 +85,7 @@ function clearAuth() {
   state.messages = [];
   state.activeAgentId = "";
   state.activeSessionId = "";
+  state.view = "chat";
   state.modal = null;
   state.pendingReply = false;
 }
@@ -430,6 +435,184 @@ function renderChatContent() {
   `;
 }
 
+function renderAgentAvatar(agent, size = 38) {
+  if (agent?.avatar) {
+    return `
+      <span class="agent-avatar" style="width:${size}px;height:${size}px">
+        <img src="${escapeHtml(agent.avatar)}" alt="" />
+      </span>
+    `;
+  }
+  return `
+    <span class="agent-avatar" style="width:${size}px;height:${size}px">
+      ${escapeHtml(initials(agent?.name || "A"))}
+    </span>
+  `;
+}
+
+function renderAgentQuickList() {
+  if (state.workspaceBusy && !state.agents.length) {
+    return `
+      <div class="sidebar-empty">
+        <span class="spinner small"></span>
+        <div>正在加载 Agent</div>
+      </div>
+    `;
+  }
+
+  if (!state.agents.length) {
+    return '<div class="sidebar-empty">暂无 Agent</div>';
+  }
+
+  return state.agents
+    .map(
+      (agent) => `
+        <button
+          class="sidebar-agent-item ${agent.id === state.activeAgentId ? "active" : ""}"
+          type="button"
+          data-action="edit-agent"
+          data-agent-id="${escapeHtml(agent.id)}"
+        >
+          ${renderAgentAvatar(agent, 30)}
+          <span class="sidebar-agent-copy">
+            <span class="sidebar-agent-name">${escapeHtml(agent.name || "未命名 Agent")}</span>
+            <span class="sidebar-agent-meta">${escapeHtml(agent.modelId || agent.provider || "未配置模型")}</span>
+          </span>
+        </button>
+      `,
+    )
+    .join("");
+}
+
+function renderAgentManager() {
+  if (state.workspaceBusy && !state.agents.length) {
+    return `
+      <section class="agent-page">
+        <div class="agent-page-loading">
+          <span class="spinner"></span>
+          <span>正在加载 Agent</span>
+        </div>
+      </section>
+    `;
+  }
+
+  if (!state.agents.length) {
+    return `
+      <section class="agent-page">
+        <div class="empty-state agent-empty-state">
+          <div class="empty-icon">${svgIcon("bot", 24)}</div>
+          <h2>暂无 Agent</h2>
+          <p>创建第一个 Agent 后，就可以为它建立会话并开始聊天。</p>
+          <button class="primary-button" type="button" data-action="new-agent">
+            ${svgIcon("plus", 16)}
+            <span>新建 Agent</span>
+          </button>
+        </div>
+      </section>
+    `;
+  }
+
+  return `
+    <section class="agent-page">
+      <div class="agent-page-toolbar">
+        <div class="agent-search">
+          ${svgIcon("search", 17)}
+          <label class="sr-only" for="agent-search">搜索 Agent</label>
+          <input id="agent-search" type="search" placeholder="搜索名称、模型或服务商" autocomplete="off" />
+        </div>
+        <span class="agent-count">${state.agents.length} 个 Agent</span>
+      </div>
+      <div class="agent-table-shell">
+        <div class="agent-table agent-table-head" aria-hidden="true">
+          <span>Agent</span>
+          <span>服务商</span>
+          <span>模型</span>
+          <span>工具</span>
+          <span>更新时间</span>
+          <span></span>
+        </div>
+        <div class="agent-table-body">
+          ${state.agents
+            .map((agent) => {
+              const searchText = [
+                agent.name,
+                agent.description,
+                agent.provider,
+                agent.modelId,
+                ...(agent.tools || []),
+              ]
+                .filter(Boolean)
+                .join(" ")
+                .toLowerCase();
+              const tools = Array.isArray(agent.tools) ? agent.tools : [];
+
+              return `
+                <article
+                  class="agent-table agent-table-row"
+                  data-agent-row
+                  data-search="${escapeHtml(searchText)}"
+                >
+                  <div class="agent-identity">
+                    ${renderAgentAvatar(agent)}
+                    <div class="agent-identity-copy">
+                      <strong>${escapeHtml(agent.name || "未命名 Agent")}</strong>
+                      <span>${escapeHtml(agent.description || "暂无描述")}</span>
+                    </div>
+                  </div>
+                  <div data-label="服务商">
+                    <span class="provider-pill">${escapeHtml(agent.provider || "未配置")}</span>
+                  </div>
+                  <div class="agent-model" data-label="模型">
+                    ${escapeHtml(agent.modelId || "未配置")}
+                  </div>
+                  <div class="agent-tools" data-label="工具">
+                    ${
+                      tools.length
+                        ? tools
+                            .map((tool) => `<span class="tool-pill">${escapeHtml(tool)}</span>`)
+                            .join("")
+                        : '<span class="muted-text">无</span>'
+                    }
+                  </div>
+                  <div class="agent-time" data-label="更新时间">
+                    ${escapeHtml(formatSessionTime(agent.updateTime || agent.createTime))}
+                  </div>
+                  <div class="agent-row-actions">
+                    <button
+                      class="icon-button"
+                      type="button"
+                      data-action="chat-agent"
+                      data-agent-id="${escapeHtml(agent.id)}"
+                      title="开始对话"
+                      aria-label="使用该 Agent 开始对话"
+                    >${svgIcon("message", 16)}</button>
+                    <button
+                      class="icon-button"
+                      type="button"
+                      data-action="edit-agent"
+                      data-agent-id="${escapeHtml(agent.id)}"
+                      title="编辑"
+                      aria-label="编辑 Agent"
+                    >${svgIcon("pencil", 16)}</button>
+                    <button
+                      class="icon-button danger"
+                      type="button"
+                      data-action="delete-agent"
+                      data-agent-id="${escapeHtml(agent.id)}"
+                      title="删除"
+                      aria-label="删除 Agent"
+                    >${svgIcon("trash", 16)}</button>
+                  </div>
+                </article>
+              `;
+            })
+            .join("")}
+        </div>
+      </div>
+    </section>
+  `;
+}
+
 function renderWorkspace() {
   const agent = activeAgent();
   const session = activeSession();
@@ -454,20 +637,58 @@ function renderWorkspace() {
             aria-label="关闭侧边栏"
           >${svgIcon("x", 18)}</button>
         </div>
-        <section class="sidebar-section">
-          <div class="sidebar-section-header">
-            <span class="sidebar-section-title">会话</span>
-            <button
-              class="icon-button"
-              type="button"
-              data-action="new-session"
-              title="新建会话"
-              aria-label="新建会话"
-              ${!state.agents.length || state.workspaceBusy ? "disabled" : ""}
-            >${svgIcon("plus", 18)}</button>
-          </div>
-          <div class="session-list">${renderSessions()}</div>
-        </section>
+        <nav class="sidebar-nav" aria-label="主导航">
+          <button
+            class="sidebar-nav-item ${state.view === "chat" ? "active" : ""}"
+            type="button"
+            data-action="show-chat"
+          >
+            ${svgIcon("message", 17)}
+            <span>对话</span>
+          </button>
+          <button
+            class="sidebar-nav-item ${state.view === "agents" ? "active" : ""}"
+            type="button"
+            data-action="show-agents"
+          >
+            ${svgIcon("bot", 17)}
+            <span>Agent 管理</span>
+          </button>
+        </nav>
+        ${
+          state.view === "chat"
+            ? `
+              <section class="sidebar-section">
+                <div class="sidebar-section-header">
+                  <span class="sidebar-section-title">会话</span>
+                  <button
+                    class="icon-button"
+                    type="button"
+                    data-action="new-session"
+                    title="新建会话"
+                    aria-label="新建会话"
+                    ${!state.agents.length || state.workspaceBusy ? "disabled" : ""}
+                  >${svgIcon("plus", 18)}</button>
+                </div>
+                <div class="session-list">${renderSessions()}</div>
+              </section>
+            `
+            : `
+              <section class="sidebar-section">
+                <div class="sidebar-section-header">
+                  <span class="sidebar-section-title">Agent</span>
+                  <button
+                    class="icon-button"
+                    type="button"
+                    data-action="new-agent"
+                    title="新建 Agent"
+                    aria-label="新建 Agent"
+                  >${svgIcon("plus", 18)}</button>
+                </div>
+                <div class="session-list agent-quick-list">${renderAgentQuickList()}</div>
+              </section>
+            `
+        }
         <div class="sidebar-footer">
           <div class="user-chip">
             <div class="user-avatar">${escapeHtml(initials(username))}</div>
@@ -500,13 +721,34 @@ function renderWorkspace() {
               title="打开侧边栏"
               aria-label="打开侧边栏"
             >${svgIcon("menu", 19)}</button>
-            ${renderAgentPicker()}
-            <div class="workspace-title">
-              <h1>${escapeHtml(session?.title || agent?.name || "AgentX")}</h1>
-              <p>${escapeHtml(agent?.modelId || agent?.provider || "AI Workspace")}</p>
-            </div>
+            ${
+              state.view === "chat"
+                ? `
+                  ${renderAgentPicker()}
+                  <div class="workspace-title">
+                    <h1>${escapeHtml(session?.title || agent?.name || "AgentX")}</h1>
+                    <p>${escapeHtml(agent?.modelId || agent?.provider || "AI Workspace")}</p>
+                  </div>
+                `
+                : `
+                  <div class="workspace-title always-visible">
+                    <h1>Agent 管理</h1>
+                    <p>${state.agents.length} 个 Agent</p>
+                  </div>
+                `
+            }
           </div>
           <div class="header-actions">
+            ${
+              state.view === "agents"
+                ? `
+                  <button class="secondary-button header-create-button" type="button" data-action="new-agent">
+                    ${svgIcon("plus", 16)}
+                    <span>新建 Agent</span>
+                  </button>
+                `
+                : ""
+            }
             <button
               class="icon-button"
               type="button"
@@ -525,40 +767,46 @@ function renderWorkspace() {
             >${svgIcon("logOut", 18)}</button>
           </div>
         </header>
-        <section class="chat-panel" aria-label="对话">
-          <div class="message-viewport" id="message-viewport">
-            <div class="message-column">${renderChatContent()}</div>
-          </div>
-          <div class="composer-shell">
-            <form class="composer" id="composer-form">
-              <label class="sr-only" for="composer-input">消息</label>
-              <textarea
-                id="composer-input"
-                name="content"
-                rows="1"
-                maxlength="12000"
-                placeholder="输入消息"
-                ${!session || state.chatBusy ? "disabled" : ""}
-              ></textarea>
-              <div class="composer-footer">
-                <span class="composer-hint">${
-                  session
-                    ? escapeHtml(agent?.name || "Agent")
-                    : "请先创建会话"
-                }</span>
-                <button
-                  class="icon-button send-button"
-                  type="submit"
-                  title="发送"
-                  aria-label="发送消息"
-                  ${!session || state.chatBusy ? "disabled" : ""}
-                >
-                  ${state.chatBusy ? '<span class="button-spinner" aria-hidden="true"></span>' : svgIcon("send", 17)}
-                </button>
-              </div>
-            </form>
-          </div>
-        </section>
+        ${
+          state.view === "chat"
+            ? `
+              <section class="chat-panel" aria-label="对话">
+                <div class="message-viewport" id="message-viewport">
+                  <div class="message-column">${renderChatContent()}</div>
+                </div>
+                <div class="composer-shell">
+                  <form class="composer" id="composer-form">
+                    <label class="sr-only" for="composer-input">消息</label>
+                    <textarea
+                      id="composer-input"
+                      name="content"
+                      rows="1"
+                      maxlength="12000"
+                      placeholder="输入消息"
+                      ${!session || state.chatBusy ? "disabled" : ""}
+                    ></textarea>
+                    <div class="composer-footer">
+                      <span class="composer-hint">${
+                        session
+                          ? escapeHtml(agent?.name || "Agent")
+                          : "请先创建会话"
+                      }</span>
+                      <button
+                        class="icon-button send-button"
+                        type="submit"
+                        title="发送"
+                        aria-label="发送消息"
+                        ${!session || state.chatBusy ? "disabled" : ""}
+                      >
+                        ${state.chatBusy ? '<span class="button-spinner" aria-hidden="true"></span>' : svgIcon("send", 17)}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </section>
+            `
+            : renderAgentManager()
+        }
       </main>
     </div>
     ${renderModal()}
@@ -567,9 +815,179 @@ function renderWorkspace() {
   window.requestAnimationFrame(scrollMessagesToBottom);
 }
 
+function renderAgentEditorModal() {
+  const agent =
+    state.modal?.agentId
+      ? state.agents.find((item) => item.id === state.modal.agentId)
+      : null;
+  const editing = Boolean(agent);
+  const values = {
+    name: agent?.name || "",
+    avatar: agent?.avatar || "",
+    description: agent?.description || "",
+    systemPrompt: agent?.systemPrompt || "",
+    welcomeMessage: agent?.welcomeMessage || "",
+    provider: agent?.provider || "openai",
+    modelId: agent?.modelId || "",
+    temperature: agent?.temperature ?? 0.7,
+    topP: agent?.topP ?? 0.7,
+    topK: agent?.topK ?? 50,
+    maxTokens: agent?.maxTokens ?? "",
+  };
+  const toolNames = Array.from(new Set(["weather", "file", ...(agent?.tools || [])]));
+  const selectedTools = new Set(agent?.tools || []);
+
+  return `
+    <div class="modal-backdrop agent-editor-backdrop" data-modal-backdrop>
+      <section class="modal agent-editor-modal" role="dialog" aria-modal="true" aria-labelledby="agent-editor-title">
+        <div class="modal-header">
+          <div>
+            <h2 class="modal-title" id="agent-editor-title">${editing ? "编辑 Agent" : "新建 Agent"}</h2>
+            <p class="modal-subtitle">${escapeHtml(agent?.id || "配置模型、提示词和可用工具")}</p>
+          </div>
+          <button class="icon-button" type="button" data-action="close-modal" aria-label="关闭">
+            ${svgIcon("x", 18)}
+          </button>
+        </div>
+        <form id="agent-form">
+          <div class="modal-body agent-editor-body">
+            <section class="agent-form-section">
+              <h3 class="agent-form-section-title">基础信息</h3>
+              <div class="field-grid two-columns">
+                <div class="field">
+                  <label for="agent-name">名称</label>
+                  <input id="agent-name" name="name" maxlength="100" value="${escapeHtml(values.name)}" required autofocus />
+                </div>
+                <div class="field">
+                  <label for="agent-avatar">头像 URL</label>
+                  <input id="agent-avatar" name="avatar" maxlength="500" value="${escapeHtml(values.avatar)}" />
+                </div>
+              </div>
+              <div class="field">
+                <label for="agent-description">描述</label>
+                <textarea id="agent-description" name="description" maxlength="500">${escapeHtml(values.description)}</textarea>
+              </div>
+            </section>
+
+            <section class="agent-form-section">
+              <h3 class="agent-form-section-title">模型配置</h3>
+              <div class="field-grid two-columns">
+                <div class="field">
+                  <label for="agent-provider">服务商</label>
+                  <select id="agent-provider" name="provider" required>
+                    <option value="openai" ${values.provider === "openai" ? "selected" : ""}>OpenAI</option>
+                    <option value="anthropic" ${values.provider === "anthropic" ? "selected" : ""}>Anthropic</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="agent-model">模型 ID</label>
+                  <input id="agent-model" name="modelId" maxlength="120" value="${escapeHtml(values.modelId)}" placeholder="gpt-4o-mini" required />
+                </div>
+              </div>
+              <div class="field-grid four-columns">
+                <div class="field">
+                  <label for="agent-temperature">Temperature</label>
+                  <input id="agent-temperature" name="temperature" type="number" min="0" max="2" step="0.1" value="${escapeHtml(values.temperature)}" />
+                </div>
+                <div class="field">
+                  <label for="agent-top-p">Top P</label>
+                  <input id="agent-top-p" name="topP" type="number" min="0" max="1" step="0.1" value="${escapeHtml(values.topP)}" />
+                </div>
+                <div class="field">
+                  <label for="agent-top-k">Top K</label>
+                  <input id="agent-top-k" name="topK" type="number" min="0" step="1" value="${escapeHtml(values.topK)}" />
+                </div>
+                <div class="field">
+                  <label for="agent-max-tokens">Max Tokens</label>
+                  <input id="agent-max-tokens" name="maxTokens" type="number" min="1" step="1" value="${escapeHtml(values.maxTokens)}" />
+                </div>
+              </div>
+            </section>
+
+            <section class="agent-form-section">
+              <h3 class="agent-form-section-title">提示词</h3>
+              <div class="field">
+                <label for="agent-system-prompt">System Prompt</label>
+                <textarea id="agent-system-prompt" name="systemPrompt" maxlength="8000">${escapeHtml(values.systemPrompt)}</textarea>
+              </div>
+              <div class="field">
+                <label for="agent-welcome-message">欢迎消息</label>
+                <textarea id="agent-welcome-message" name="welcomeMessage" maxlength="1000">${escapeHtml(values.welcomeMessage)}</textarea>
+              </div>
+            </section>
+
+            <section class="agent-form-section">
+              <h3 class="agent-form-section-title">工具</h3>
+              <div class="tool-option-grid">
+                ${toolNames
+                  .map(
+                    (tool) => `
+                      <label class="tool-option">
+                        <input type="checkbox" name="tools" value="${escapeHtml(tool)}" ${selectedTools.has(tool) ? "checked" : ""} />
+                        <span>${escapeHtml(tool)}</span>
+                      </label>
+                    `,
+                  )
+                  .join("")}
+              </div>
+            </section>
+          </div>
+          <div class="modal-footer agent-editor-footer">
+            <button class="ghost-button" type="button" data-action="close-modal">取消</button>
+            <button class="primary-button" type="submit" ${state.agentBusy ? "disabled" : ""}>
+              ${state.agentBusy ? '<span class="button-spinner"></span>' : svgIcon("save", 16)}
+              <span>${editing ? "保存" : "创建"}</span>
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  `;
+}
+
+function renderDeleteAgentModal() {
+  const agent = state.agents.find((item) => item.id === state.modal?.agentId);
+  const sessionCount = state.sessions.filter((session) => session.agentId === agent?.id).length;
+
+  return `
+    <div class="modal-backdrop" data-modal-backdrop>
+      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="delete-agent-title">
+        <div class="modal-header">
+          <h2 class="modal-title" id="delete-agent-title">删除 Agent</h2>
+          <button class="icon-button" type="button" data-action="close-modal" aria-label="关闭">
+            ${svgIcon("x", 18)}
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="modal-danger-mark">${svgIcon("trash", 19)}</div>
+          <p class="modal-copy">
+            Agent“${escapeHtml(agent?.name || "未命名 Agent")}”将被永久删除。
+            ${sessionCount ? `当前有 ${sessionCount} 个关联会话，删除 Agent 后这些会话将不可继续使用。` : ""}
+          </p>
+        </div>
+        <div class="modal-footer">
+          <button class="ghost-button" type="button" data-action="close-modal">取消</button>
+          <button class="primary-button" type="button" data-action="confirm-delete-agent" ${state.agentBusy ? "disabled" : ""}>
+            ${svgIcon("trash", 16)}
+            <span>删除</span>
+          </button>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
 function renderModal() {
   if (!state.modal) {
     return "";
+  }
+
+  if (state.modal.type === "agent-editor") {
+    return renderAgentEditorModal();
+  }
+
+  if (state.modal.type === "delete-agent") {
+    return renderDeleteAgentModal();
   }
 
   if (state.modal.type === "create-session") {
@@ -685,10 +1103,13 @@ function renderModal() {
   return "";
 }
 
-function scrollMessagesToBottom() {
+function scrollMessagesToBottom({ behavior = "auto" } = {}) {
   const viewport = document.querySelector("#message-viewport");
   if (viewport) {
-    viewport.scrollTop = viewport.scrollHeight;
+    viewport.scrollTo({
+      top: viewport.scrollHeight,
+      behavior,
+    });
   }
 }
 
@@ -722,7 +1143,10 @@ async function refreshWorkspace({ render = true, quiet = false } = {}) {
     ]);
 
     state.agents = Array.isArray(agents) ? agents : [];
-    state.sessions = Array.isArray(sessions) ? sessions : [];
+    const agentIds = new Set(state.agents.map((agent) => agent.id));
+    state.sessions = (Array.isArray(sessions) ? sessions : []).filter((session) =>
+      agentIds.has(session.agentId),
+    );
 
     if (!state.agents.some((agent) => agent.id === state.activeAgentId)) {
       state.activeAgentId = state.agents[0]?.id || "";
@@ -784,6 +1208,7 @@ async function selectSession(sessionId) {
 
   state.activeSessionId = session.id;
   state.activeAgentId = session.agentId || state.activeAgentId;
+  state.view = "chat";
   state.messages = [];
   state.sidebarOpen = false;
   persistSelection();
@@ -807,6 +1232,7 @@ async function selectAgent(agentId) {
   }
 
   state.activeAgentId = agentId;
+  state.view = "chat";
   const latestSession = state.sessions.find((session) => session.agentId === agentId);
   state.activeSessionId = latestSession?.id || "";
   state.messages = [];
@@ -844,6 +1270,7 @@ async function createSession(agentId, title) {
     state.sessions = [created, ...state.sessions.filter((session) => session.id !== created.id)];
     state.activeAgentId = created.agentId;
     state.activeSessionId = created.id;
+    state.view = "chat";
     state.messages = [];
     persistSelection();
     showToast("success", "会话已创建");
@@ -914,6 +1341,113 @@ async function deleteSession(sessionId) {
     showToast("error", "删除失败", error.message);
   } finally {
     state.workspaceBusy = false;
+    renderWorkspace();
+  }
+}
+
+function optionalNumber(value) {
+  const text = String(value ?? "").trim();
+  if (!text) {
+    return null;
+  }
+  const number = Number(text);
+  if (!Number.isFinite(number)) {
+    throw new ApiError("数值参数格式不正确");
+  }
+  return number;
+}
+
+async function saveAgent(form) {
+  const formData = new FormData(form);
+  const agentId = state.modal?.agentId || "";
+  const editing = Boolean(agentId);
+  let payload;
+
+  try {
+    payload = {
+      name: String(formData.get("name") || "").trim(),
+      avatar: String(formData.get("avatar") || "").trim() || null,
+      description: String(formData.get("description") || "").trim() || null,
+      systemPrompt: String(formData.get("systemPrompt") || "").trim() || null,
+      welcomeMessage: String(formData.get("welcomeMessage") || "").trim() || null,
+      provider: String(formData.get("provider") || "").trim(),
+      modelId: String(formData.get("modelId") || "").trim(),
+      temperature: optionalNumber(formData.get("temperature")),
+      topP: optionalNumber(formData.get("topP")),
+      topK: optionalNumber(formData.get("topK")),
+      maxTokens: optionalNumber(formData.get("maxTokens")),
+      tools: formData.getAll("tools").map(String),
+    };
+  } catch (error) {
+    showToast("error", "保存失败", error.message);
+    return;
+  }
+
+  if (editing) {
+    payload.id = agentId;
+  }
+
+  state.agentBusy = true;
+  state.modal = null;
+  renderWorkspace();
+
+  try {
+    const saved = await apiRequest(editing ? "/agent/update" : "/agent/create", {
+      method: "POST",
+      body: payload,
+    });
+
+    if (editing) {
+      state.agents = state.agents.map((agent) => (agent.id === saved.id ? saved : agent));
+    } else {
+      state.agents = [saved, ...state.agents.filter((agent) => agent.id !== saved.id)];
+      state.activeAgentId = saved.id;
+    }
+
+    persistSelection();
+    showToast("success", editing ? "Agent 已更新" : "Agent 已创建");
+    await refreshWorkspace({ render: false, quiet: true });
+  } catch (error) {
+    if (error.code === "401") {
+      clearAuth();
+      renderLogin(error.message);
+      return;
+    }
+    showToast("error", editing ? "更新失败" : "创建失败", error.message);
+  } finally {
+    state.agentBusy = false;
+    renderWorkspace();
+  }
+}
+
+async function deleteAgent(agentId) {
+  state.agentBusy = true;
+  state.modal = null;
+  renderWorkspace();
+
+  try {
+    await apiRequest(`/agent/delete?id=${encodeURIComponent(agentId)}`, { method: "POST" });
+    state.agents = state.agents.filter((agent) => agent.id !== agentId);
+    state.sessions = state.sessions.filter((session) => session.agentId !== agentId);
+
+    if (state.activeAgentId === agentId) {
+      state.activeAgentId = state.agents[0]?.id || "";
+      state.activeSessionId = "";
+      state.messages = [];
+    }
+
+    persistSelection();
+    showToast("success", "Agent 已删除");
+    await refreshWorkspace({ render: false, quiet: true });
+  } catch (error) {
+    if (error.code === "401") {
+      clearAuth();
+      renderLogin(error.message);
+      return;
+    }
+    showToast("error", "删除失败", error.message);
+  } finally {
+    state.agentBusy = false;
     renderWorkspace();
   }
 }
@@ -1003,11 +1537,38 @@ async function handleLogin(form) {
   }
 }
 
+function switchView(view) {
+  state.view = view === "agents" ? "agents" : "chat";
+  state.sidebarOpen = false;
+  renderWorkspace();
+}
+
+function openAgentEditor(agentId = "") {
+  state.modal = {
+    type: "agent-editor",
+    agentId: agentId || "",
+  };
+  renderWorkspace();
+}
+
+function openDeleteAgentModal(agentId) {
+  state.modal = {
+    type: "delete-agent",
+    agentId,
+  };
+  renderWorkspace();
+}
+
+async function chatWithAgent(agentId) {
+  await selectAgent(agentId);
+}
+
 function openCreateSessionModal() {
   if (!state.agents.length) {
     showToast("info", "暂无可用 Agent");
     return;
   }
+  state.view = "chat";
   state.modal = { type: "create-session" };
   renderWorkspace();
 }
@@ -1063,6 +1624,12 @@ app.addEventListener("submit", async (event) => {
     return;
   }
 
+  if (form.id === "agent-form") {
+    event.preventDefault();
+    await saveAgent(form);
+    return;
+  }
+
   if (form.id === "composer-form") {
     event.preventDefault();
     const formData = new FormData(form);
@@ -1083,6 +1650,7 @@ app.addEventListener("click", async (event) => {
 
   const action = button.dataset.action;
   const sessionId = button.dataset.sessionId;
+  const agentId = button.dataset.agentId;
 
   if (action === "select-session") {
     await selectSession(sessionId);
@@ -1094,6 +1662,20 @@ app.addEventListener("click", async (event) => {
     openDeleteSessionModal(sessionId);
   } else if (action === "confirm-delete-session") {
     await deleteSession(sessionId || state.modal?.sessionId);
+  } else if (action === "show-chat") {
+    switchView("chat");
+  } else if (action === "show-agents") {
+    switchView("agents");
+  } else if (action === "new-agent") {
+    openAgentEditor();
+  } else if (action === "edit-agent") {
+    openAgentEditor(agentId);
+  } else if (action === "delete-agent") {
+    openDeleteAgentModal(agentId);
+  } else if (action === "confirm-delete-agent") {
+    await deleteAgent(agentId || state.modal?.agentId);
+  } else if (action === "chat-agent") {
+    await chatWithAgent(agentId);
   } else if (action === "close-modal") {
     closeModal();
   } else if (action === "logout") {
@@ -1123,6 +1705,14 @@ app.addEventListener("change", async (event) => {
 app.addEventListener("input", (event) => {
   if (event.target.id === "composer-input") {
     resizeComposer(event.target);
+    return;
+  }
+
+  if (event.target.id === "agent-search") {
+    const query = event.target.value.trim().toLowerCase();
+    document.querySelectorAll("[data-agent-row]").forEach((row) => {
+      row.hidden = query && !String(row.dataset.search || "").includes(query);
+    });
   }
 });
 
