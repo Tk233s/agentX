@@ -17,10 +17,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.publisher.SignalType;
 import reactor.core.scheduler.Schedulers;
 
 import jakarta.annotation.Resource;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * 对话领域服务实现
@@ -58,21 +60,30 @@ public class ConversationServiceImpl implements IConversationService {
     public Flux<String> streamConversation(String sessionId, String userId, String content) {
         LLMEntity llmEntity = prepareConversation(sessionId, userId, content);
         StringBuilder reply = new StringBuilder();
+        AtomicBoolean persisted = new AtomicBoolean(false);
         Flux<String> stream = llmPort.stream(llmEntity);
         if (stream == null) {
             throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(),
                     "服务商[" + llmEntity.getProvider() + "]暂不支持流式对话");
         }
 
+        Runnable persistReply = () -> {
+            if (persisted.compareAndSet(false, true) && !reply.isEmpty()) {
+                messageDomainService.saveAssistantMessage(sessionId, reply.toString(), 0);
+            }
+        };
+
         return stream
                 .doOnNext(reply::append)
                 // 流结束后在弹性线程执行阻塞式数据库写入，并把完整回复持久化
                 .publishOn(Schedulers.boundedElastic())
-                .concatWith(Mono.fromRunnable(() -> {
-                    if (!reply.isEmpty()) {
-                        messageDomainService.saveAssistantMessage(sessionId, reply.toString(), 0);
+                .concatWith(Mono.fromRunnable(persistReply))
+                // 用户点击停止时保留已经生成的部分内容
+                .doFinally(signalType -> {
+                    if (signalType == SignalType.CANCEL) {
+                        Schedulers.boundedElastic().schedule(persistReply);
                     }
-                }));
+                });
     }
 
     /**

@@ -1003,6 +1003,20 @@ textarea:disabled {
   background: var(--surface-muted);
 }
 
+.stop-button {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: #ffffff;
+  background: var(--danger);
+}
+
+.stop-button:hover {
+  color: #ffffff;
+  background: #a93232;
+}
+
 .modal-backdrop {
   position: fixed;
   z-index: 50;

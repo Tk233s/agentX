@@ -21,6 +21,7 @@ const icons = {
   save: '<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
   send: '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
+  stop: '<rect width="12" height="12" x="6" y="6" rx="2" fill="currentColor" stroke="none"/>',
   trash: '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/>',
   user: '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
   x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
@@ -922,15 +923,27 @@ function renderWorkspace() {
                           ? escapeHtml(agent?.name || "Agent")
                           : "请先创建会话"
                       }</span>
-                      <button
-                        class="icon-button send-button"
-                        type="submit"
-                        title="发送"
-                        aria-label="发送消息"
-                        ${!session || state.chatBusy ? "disabled" : ""}
-                      >
-                        ${state.chatBusy ? '<span class="button-spinner" aria-hidden="true"></span>' : svgIcon("send", 17)}
-                      </button>
+                      ${
+                        state.chatBusy
+                          ? `
+                            <button
+                              class="icon-button stop-button"
+                              type="button"
+                              data-action="stop-generation"
+                              title="停止生成"
+                              aria-label="停止生成"
+                            >${svgIcon("stop", 15)}</button>
+                          `
+                          : `
+                            <button
+                              class="icon-button send-button"
+                              type="submit"
+                              title="发送"
+                              aria-label="发送消息"
+                              ${!session ? "disabled" : ""}
+                            >${svgIcon("send", 17)}</button>
+                          `
+                      }
                     </div>
                   </form>
                 </div>
@@ -1610,6 +1623,36 @@ async function deleteAgent(agentId) {
   }
 }
 
+function stopGeneration() {
+  const controller = state.streamAbortController;
+  if (!controller) {
+    return;
+  }
+
+  const partialReply = state.streamingContent;
+  controller.abort();
+  state.streamAbortController = null;
+  state.chatBusy = false;
+  state.pendingReply = false;
+  state.streamingContent = "";
+
+  if (partialReply.trim()) {
+    state.messages = [
+      ...state.messages,
+      {
+        id: `stopped-${Date.now()}`,
+        role: "assistant",
+        content: partialReply,
+        tokens: 0,
+        createTime: new Date().toISOString(),
+      },
+    ];
+  }
+
+  renderWorkspace();
+  showToast("info", "已停止生成");
+}
+
 async function sendMessage(content) {
   const session = activeSession();
   const text = content.trim();
@@ -1856,6 +1899,8 @@ app.addEventListener("click", async (event) => {
     await deleteAgent(agentId || state.modal?.agentId);
   } else if (action === "chat-agent") {
     await chatWithAgent(agentId);
+  } else if (action === "stop-generation") {
+    stopGeneration();
   } else if (action === "close-modal") {
     closeModal();
   } else if (action === "logout") {
