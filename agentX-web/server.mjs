@@ -30,6 +30,7 @@ function proxyRequest(request, response) {
 
   delete headers["content-length"];
 
+  let proxyResponse = null;
   const proxyRequest = (backendUrl.protocol === "https:" ? httpsRequest : httpRequest)(
     {
       hostname: backendUrl.hostname,
@@ -38,13 +39,26 @@ function proxyRequest(request, response) {
       method: request.method,
       headers,
     },
-    (proxyResponse) => {
-      response.writeHead(proxyResponse.statusCode || 502, proxyResponse.headers);
-      proxyResponse.pipe(response);
+    (upstreamResponse) => {
+      proxyResponse = upstreamResponse;
+      response.writeHead(upstreamResponse.statusCode || 502, upstreamResponse.headers);
+      upstreamResponse.pipe(response);
     },
   );
 
+  const abortUpstream = () => {
+    if (!proxyRequest.destroyed) {
+      proxyRequest.destroy();
+    }
+    if (proxyResponse && !proxyResponse.destroyed) {
+      proxyResponse.destroy();
+    }
+  };
+
   proxyRequest.on("error", () => {
+    if (response.destroyed) {
+      return;
+    }
     if (!response.headersSent) {
       sendJson(response, 502, {
         code: "502",
@@ -53,6 +67,15 @@ function proxyRequest(request, response) {
       });
     } else {
       response.end();
+    }
+  });
+
+  // 浏览器点击“停止生成”会关闭当前响应，继续关闭上游请求，
+  // 让 Spring 收到 CANCEL 并保存已经生成的部分内容。
+  request.on("aborted", abortUpstream);
+  response.on("close", () => {
+    if (!response.writableFinished) {
+      abortUpstream();
     }
   });
 
