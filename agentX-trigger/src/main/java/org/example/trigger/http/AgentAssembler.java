@@ -22,9 +22,6 @@ public class AgentAssembler {
                 userId,
                 req.getProvider(),
                 req.getModelId(),
-                req.getTemperature(),
-                req.getTopP(),
-                req.getTopK(),
                 req.getMaxTokens(),
                 req.getTools());
     }
@@ -40,9 +37,6 @@ public class AgentAssembler {
         agent.setWelcomeMessage(req.getWelcomeMessage());
         agent.setProvider(req.getProvider());
         agent.setModelId(req.getModelId());
-        agent.setTemperature(req.getTemperature());
-        agent.setTopP(req.getTopP());
-        agent.setTopK(req.getTopK());
         agent.setMaxTokens(req.getMaxTokens());
         agent.setTools(req.getTools());
         return agent;
@@ -59,9 +53,6 @@ public class AgentAssembler {
         res.setWelcomeMessage(entity.getWelcomeMessage());
         res.setProvider(entity.getProvider());
         res.setModelId(entity.getModelId());
-        res.setTemperature(entity.getTemperature());
-        res.setTopP(entity.getTopP());
-        res.setTopK(entity.getTopK());
         res.setMaxTokens(entity.getMaxTokens());
         res.setTools(entity.getTools());
         res.setEnabled(entity.getEnabled());

@@ -2,7 +2,6 @@ package org.example.trigger.dto.agent;
 
 import lombok.Data;
 
-import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 
@@ -39,19 +38,6 @@ public class AgentReq {
 
     /** 模型ID */
     private String modelId;
-
-    /** 温度参数 0-2 */
-    @Min(value = 0, message = "temperature最小值为0")
-    @Max(value = 2, message = "temperature最大值为2")
-    private Double temperature;
-
-    /** Top-P参数 0-1 */
-    @Min(value = 0, message = "topP最小值为0")
-    @Max(value = 1, message = "topP最大值为1")
-    private Double topP;
-
-    /** Top-K参数 */
-    private Integer topK;
 
     /** 最大Token数 */
     @Min(value = 1, message = "maxTokens最小值为1")

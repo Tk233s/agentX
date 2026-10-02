@@ -47,7 +47,6 @@ public class OpenAIClient implements LLMPort {
         ChatClient baseClient = buildChatClient(llmEntity.getModel(),
                                                   llmEntity.getApiKey(),
                                                   llmEntity.getBaseUrl(),
-                                                  llmEntity.getTemperature(),
                                                   llmEntity.getMaxTokens());
 
         // 组装消息并调用
@@ -80,7 +79,6 @@ public class OpenAIClient implements LLMPort {
         ChatClient baseClient = buildChatClient(llmEntity.getModel(),
                                                   llmEntity.getApiKey(),
                                                   llmEntity.getBaseUrl(),
-                                                  llmEntity.getTemperature(),
                                                   llmEntity.getMaxTokens());
 
         var promptSpec = baseClient.prompt(buildPrompt(llmEntity.getSystemPrompt(), llmEntity.getMessages()));
@@ -102,7 +100,6 @@ public class OpenAIClient implements LLMPort {
     private ChatClient buildChatClient(String model,
                                        String apiKey,
                                        String baseUrl,
-                                       Double temperature,
                                        Integer maxTokens) {
 
         // Step 1: 构建 OpenAiApi（HTTP 连接层）
@@ -115,7 +112,6 @@ public class OpenAIClient implements LLMPort {
         // Step 2: 构建 OpenAiChatOptions（模型调用参数层）
         OpenAiChatOptions options = OpenAiChatOptions.builder()
                 .model(model)
-                .temperature(temperature != null ? temperature : 0.7)
                 .maxTokens(maxTokens != null ? maxTokens : 2048)
                 .streamUsage(true)
                 .build();

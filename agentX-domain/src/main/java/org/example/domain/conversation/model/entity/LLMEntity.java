@@ -13,7 +13,6 @@ public class LLMEntity {
     private String model;
     private String apiKey;
     private String baseUrl;
-    private Double temperature;
     private Integer maxTokens;
 
     private String provider;

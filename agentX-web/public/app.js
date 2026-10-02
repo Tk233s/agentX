@@ -1061,9 +1061,6 @@ function renderAgentEditorModal() {
     welcomeMessage: agent?.welcomeMessage || "",
     provider: agent?.provider || "openai",
     modelId: agent?.modelId || "",
-    temperature: agent?.temperature ?? 0.7,
-    topP: agent?.topP ?? 0.7,
-    topK: agent?.topK ?? 50,
     maxTokens: agent?.maxTokens ?? "",
   };
   const toolNames = Array.from(new Set(["weather", "file", ...(agent?.tools || [])]));
@@ -1116,23 +1113,9 @@ function renderAgentEditorModal() {
                   <input id="agent-model" name="modelId" maxlength="120" value="${escapeHtml(values.modelId)}" placeholder="gpt-4o-mini" required />
                 </div>
               </div>
-              <div class="field-grid four-columns">
-                <div class="field">
-                  <label for="agent-temperature">Temperature</label>
-                  <input id="agent-temperature" name="temperature" type="number" min="0" max="2" step="0.1" value="${escapeHtml(values.temperature)}" />
-                </div>
-                <div class="field">
-                  <label for="agent-top-p">Top P</label>
-                  <input id="agent-top-p" name="topP" type="number" min="0" max="1" step="0.1" value="${escapeHtml(values.topP)}" />
-                </div>
-                <div class="field">
-                  <label for="agent-top-k">Top K</label>
-                  <input id="agent-top-k" name="topK" type="number" min="0" step="1" value="${escapeHtml(values.topK)}" />
-                </div>
-                <div class="field">
-                  <label for="agent-max-tokens">Max Tokens</label>
-                  <input id="agent-max-tokens" name="maxTokens" type="number" min="1" step="1" value="${escapeHtml(values.maxTokens)}" />
-                </div>
+              <div class="field">
+                <label for="agent-max-tokens">Max Tokens</label>
+                <input id="agent-max-tokens" name="maxTokens" type="number" min="1" step="1" value="${escapeHtml(values.maxTokens)}" />
               </div>
             </section>
 
@@ -1631,9 +1614,6 @@ async function saveAgent(form) {
       welcomeMessage: String(formData.get("welcomeMessage") || "").trim() || null,
       provider: String(formData.get("provider") || "").trim(),
       modelId: String(formData.get("modelId") || "").trim(),
-      temperature: optionalNumber(formData.get("temperature")),
-      topP: optionalNumber(formData.get("topP")),
-      topK: optionalNumber(formData.get("topK")),
       maxTokens: optionalNumber(formData.get("maxTokens")),
       tools: formData.getAll("tools").map(String),
     };

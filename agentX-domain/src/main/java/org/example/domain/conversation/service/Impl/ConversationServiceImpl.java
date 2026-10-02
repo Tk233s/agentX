@@ -243,7 +243,7 @@ public class ConversationServiceImpl implements IConversationService {
             throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "会话不存在");
         }
 
-        // 2. 查 Agent → 拿 systemPrompt、modelId、provider、temperature 等
+        // 2. 查 Agent → 拿 systemPrompt、modelId、provider、maxTokens 等
         AgentEntity agent = agentDomainService.getAgent(session.getAgentId(), userId);
         if (agent == null) {
             throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "智能体不存在");
@@ -267,7 +267,6 @@ public class ConversationServiceImpl implements IConversationService {
                 .model(agent.getModelId())
                 .apiKey(apiKey.getApiKey())
                 .baseUrl(apiKey.getBaseUrl())
-                .temperature(agent.getTemperature())
                 .maxTokens(agent.getMaxTokens())
                 .provider(agent.getProvider())
                 .systemPrompt(agent.getSystemPrompt())

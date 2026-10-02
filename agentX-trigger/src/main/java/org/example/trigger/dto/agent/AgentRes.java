@@ -35,15 +35,6 @@ public class AgentRes {
     /** 模型ID */
     private String modelId;
 
-    /** 温度参数 */
-    private Double temperature;
-
-    /** Top-P参数 */
-    private Double topP;
-
-    /** Top-K参数 */
-    private Integer topK;
-
     /** 最大Token数 */
     private Integer maxTokens;
 

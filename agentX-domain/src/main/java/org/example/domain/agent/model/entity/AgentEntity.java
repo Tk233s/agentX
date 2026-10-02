@@ -37,15 +37,6 @@ public class AgentEntity {
     /** 模型ID */
     private String modelId;
 
-    /** 温度参数 0-2 值越大创造性越强 */
-    private Double temperature;
-
-    /** Top-P参数 0-1 控制输出多样性 */
-    private Double topP;
-
-    /** Top-K参数 */
-    private Integer topK;
-
     /** 最大Token数 */
     private Integer maxTokens;
 
@@ -71,13 +62,12 @@ public class AgentEntity {
     /**
      * 工厂方法：创建新的智能体
      * 由领域层统一负责初始状态（id、enabled、时间戳），外部只提供业务字段。
-     * 模型配置参数为可选，不传则使用默认值。
+     * maxTokens 为空时由基础设施层使用默认值。
      */
     public static AgentEntity createNew(String name, String avatar, String description,
                                         String systemPrompt, String welcomeMessage, String userId,
                                         String provider, String modelId,
-                                        Double temperature, Double topP,
-                                        Integer topK, Integer maxTokens,
+                                        Integer maxTokens,
                                         java.util.List<String> tools) {
         AgentEntity agent = new AgentEntity();
         agent.setId(UUID.randomUUID().toString().replace("-", ""));
@@ -88,9 +78,6 @@ public class AgentEntity {
         agent.setWelcomeMessage(welcomeMessage);
         agent.setProvider(provider);
         agent.setModelId(modelId);
-        agent.setTemperature(temperature != null ? temperature : 0.7);
-        agent.setTopP(topP != null ? topP : 0.7);
-        agent.setTopK(topK != null ? topK : 50);
         agent.setMaxTokens(maxTokens);
         agent.setTools(tools);
         agent.setEnabled(true);
@@ -106,12 +93,6 @@ public class AgentEntity {
     public void validate() {
         if (name == null || name.trim().isEmpty()) {
             throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "智能体名称不能为空");
-        }
-        if (temperature != null && (temperature < 0 || temperature > 2)) {
-            throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "temperature范围0-2");
-        }
-        if (topP != null && (topP < 0 || topP > 1)) {
-            throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "topP范围0-1");
         }
     }
 }

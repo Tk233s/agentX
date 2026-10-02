@@ -34,15 +34,6 @@ public class AgentPO {
     /** 模型ID */
     private String modelId;
 
-    /** 温度参数 0-2 */
-    private Double temperature;
-
-    /** Top-P参数 0-1 */
-    private Double topP;
-
-    /** Top-K参数 */
-    private Integer topK;
-
     /** 最大Token数 */
     private Integer maxTokens;
 
