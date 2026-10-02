@@ -1,6 +1,9 @@
 package org.example.trigger.http;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.example.api.response.Response;
+import org.example.domain.conversation.model.entity.ConversationStreamEvent;
 import org.example.domain.conversation.service.IConversationService;
 import org.example.trigger.dto.conversation.ConversationReq;
 import org.example.types.context.UserContext;
@@ -24,6 +27,9 @@ public class ConversationController {
     @Autowired
     private IConversationService conversationService;
 
+    @Autowired
+    private ObjectMapper objectMapper;
+
     /**
      * 同步对话
      */
@@ -44,16 +50,32 @@ public class ConversationController {
         String userId = UserContext.requireCurrentUserId();
 
         return conversationService.streamConversation(req.getSessionId(), userId, req.getContent())
-                .map(content -> ServerSentEvent.builder(content)
-                        .event("delta")
-                        .build())
-                .concatWithValues(ServerSentEvent.<String>builder()
-                        .event("done")
-                        .data("[DONE]")
-                        .build())
+                .map(this::toServerSentEvent)
                 .onErrorResume(error -> Flux.just(ServerSentEvent.<String>builder()
                         .event("error")
                         .data(error.getMessage() == null ? "流式对话失败" : error.getMessage())
                         .build()));
+    }
+
+    private ServerSentEvent<String> toServerSentEvent(ConversationStreamEvent event) {
+        return switch (event.type()) {
+            case DELTA -> ServerSentEvent.builder(event.content())
+                    .event("delta")
+                    .build();
+            case ERROR -> ServerSentEvent.builder(event.content())
+                    .event("error")
+                    .build();
+            default -> ServerSentEvent.builder(toJson(event))
+                    .event(event.type().name().toLowerCase())
+                    .build();
+        };
+    }
+
+    private String toJson(ConversationStreamEvent event) {
+        try {
+            return objectMapper.writeValueAsString(event);
+        } catch (JsonProcessingException e) {
+            return "{}";
+        }
     }
 }

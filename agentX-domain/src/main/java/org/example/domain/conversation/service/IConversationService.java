@@ -1,5 +1,6 @@
 package org.example.domain.conversation.service;
 
+import org.example.domain.conversation.model.entity.ConversationStreamEvent;
 import reactor.core.publisher.Flux;
 
 /**
@@ -25,5 +26,5 @@ public interface IConversationService {
      * @param content   用户消息内容
      * @return AI回复内容流
      */
-    Flux<String> streamConversation(String sessionId, String userId, String content);
+    Flux<ConversationStreamEvent> streamConversation(String sessionId, String userId, String content);
 }

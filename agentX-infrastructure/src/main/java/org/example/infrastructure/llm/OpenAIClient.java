@@ -2,6 +2,9 @@ package org.example.infrastructure.llm;
 
 import org.example.domain.conversation.adapter.port.LLMPort;
 import org.example.domain.conversation.model.entity.LLMEntity;
+import org.example.domain.conversation.model.entity.LLMResult;
+import org.example.domain.conversation.model.entity.LLMStreamChunk;
+import org.example.domain.conversation.model.valobj.TokenUsage;
 import org.example.domain.message.model.entity.MessageEntity;
 import org.example.infrastructure.tool.ToolRegistry;
 import org.springframework.ai.chat.client.ChatClient;
@@ -9,6 +12,8 @@ import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.metadata.ChatResponseMetadata;
+import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.model.SimpleApiKey;
@@ -31,7 +36,7 @@ public class OpenAIClient implements LLMPort {
     }
 
     @Override
-    public String call(LLMEntity llmEntity) {
+    public LLMResult call(LLMEntity llmEntity) {
 
         // 从 ToolRegistry 取出该 Agent 配置的工具实例
         System.out.println("[DEBUG] LLMEntity.tools = " + llmEntity.getTools());
@@ -60,11 +65,15 @@ public class OpenAIClient implements LLMPort {
         ChatResponse response = promptSpec.call().chatResponse();
 
         // 第 4 步：提取结果文本
-        return response.getResults().get(0).getOutput().getText();
+        String content = extractContent(response);
+        return new LLMResult(
+                content,
+                extractUsage(response),
+                extractFinishReason(response));
     }
 
     @Override
-    public Flux<String> stream(LLMEntity llmEntity) {
+    public Flux<LLMStreamChunk> stream(LLMEntity llmEntity) {
 
         List<Object> tools = toolRegistry.getTools(llmEntity.getTools());
 
@@ -79,7 +88,9 @@ public class OpenAIClient implements LLMPort {
             promptSpec = promptSpec.tools(tools.toArray(new Object[0]));
         }
 
-        return promptSpec.stream().content();
+        return promptSpec.stream()
+                .chatResponse()
+                .map(this::toStreamChunk);
     }
 
     /**
@@ -106,6 +117,7 @@ public class OpenAIClient implements LLMPort {
                 .model(model)
                 .temperature(temperature != null ? temperature : 0.7)
                 .maxTokens(maxTokens != null ? maxTokens : 2048)
+                .streamUsage(true)
                 .build();
 
         // Step 3: 组合成 ChatModel
@@ -138,5 +150,46 @@ public class OpenAIClient implements LLMPort {
         }
 
         return new Prompt(messages);
+    }
+
+    private LLMStreamChunk toStreamChunk(ChatResponse response) {
+        return new LLMStreamChunk(
+                extractContent(response),
+                extractUsage(response),
+                extractFinishReason(response));
+    }
+
+    private String extractContent(ChatResponse response) {
+        if (response == null || response.getResult() == null || response.getResult().getOutput() == null) {
+            return null;
+        }
+        return response.getResult().getOutput().getText();
+    }
+
+    private String extractFinishReason(ChatResponse response) {
+        if (response == null || response.getResult() == null || response.getResult().getMetadata() == null) {
+            return null;
+        }
+        return response.getResult().getMetadata().getFinishReason();
+    }
+
+    private TokenUsage extractUsage(ChatResponse response) {
+        if (response == null) {
+            return null;
+        }
+        ChatResponseMetadata metadata = response.getMetadata();
+        if (metadata == null || metadata.getUsage() == null) {
+            return null;
+        }
+        Usage usage = metadata.getUsage();
+        if (usage.getPromptTokens() == null
+                && usage.getCompletionTokens() == null
+                && usage.getTotalTokens() == null) {
+            return null;
+        }
+        return TokenUsage.provider(
+                usage.getPromptTokens(),
+                usage.getCompletionTokens(),
+                usage.getTotalTokens());
     }
 }

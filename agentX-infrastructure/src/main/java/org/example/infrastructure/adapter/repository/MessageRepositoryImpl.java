@@ -46,6 +46,14 @@ public class MessageRepositoryImpl implements MessageRepository {
         po.setRole(entity.getRole());
         po.setContent(entity.getContent());
         po.setTokens(entity.getTokens());
+        po.setPromptTokens(entity.getPromptTokens());
+        po.setCompletionTokens(entity.getCompletionTokens());
+        po.setTotalTokens(entity.getTotalTokens());
+        po.setModel(entity.getModel());
+        po.setProvider(entity.getProvider());
+        po.setFinishReason(entity.getFinishReason());
+        po.setLatencyMs(entity.getLatencyMs());
+        po.setUsageSource(entity.getUsageSource());
         po.setCreatedAt(entity.getCreatedAt());
         return po;
     }
@@ -60,6 +68,14 @@ public class MessageRepositoryImpl implements MessageRepository {
         entity.setRole(po.getRole());
         entity.setContent(po.getContent());
         entity.setTokens(po.getTokens());
+        entity.setPromptTokens(po.getPromptTokens());
+        entity.setCompletionTokens(po.getCompletionTokens());
+        entity.setTotalTokens(po.getTotalTokens());
+        entity.setModel(po.getModel());
+        entity.setProvider(po.getProvider());
+        entity.setFinishReason(po.getFinishReason());
+        entity.setLatencyMs(po.getLatencyMs());
+        entity.setUsageSource(po.getUsageSource());
         entity.setCreatedAt(po.getCreatedAt());
         return entity;
     }

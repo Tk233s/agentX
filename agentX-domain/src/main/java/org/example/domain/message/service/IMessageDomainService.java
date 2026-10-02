@@ -20,6 +20,11 @@ public interface IMessageDomainService {
     MessageEntity saveAssistantMessage(String sessionId, String content, Integer tokens);
 
     /**
+     * 保存已经组装好元数据的消息。
+     */
+    MessageEntity saveAssistantMessage(MessageEntity message);
+
+    /**
      * 查询会话历史消息
      */
     List<MessageEntity> listMessages(String sessionId, String userId);

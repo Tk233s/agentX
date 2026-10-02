@@ -849,6 +849,21 @@ textarea:disabled {
   color: var(--ink-soft);
 }
 
+.message-stats {
+  display: flex;
+  margin-top: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+  color: var(--ink-faint);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.message-stats span + span::before {
+  margin: 0 6px;
+  content: "·";
+}
+
 .typing-dots {
   display: inline-flex;
   padding: 2px 0;

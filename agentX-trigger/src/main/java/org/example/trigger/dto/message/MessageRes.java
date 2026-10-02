@@ -21,5 +21,21 @@ public class MessageRes {
 
     private Integer tokens;
 
+    private Integer promptTokens;
+
+    private Integer completionTokens;
+
+    private Integer totalTokens;
+
+    private String model;
+
+    private String provider;
+
+    private String finishReason;
+
+    private Long latencyMs;
+
+    private String usageSource;
+
     private LocalDateTime createTime;
 }

@@ -45,6 +45,8 @@ const state = {
   pendingReply: false,
   streamingContent: "",
   streamAbortController: null,
+  streamMetadata: createEmptyStreamMetadata(),
+  streamStartedAt: 0,
 };
 
 class ApiError extends Error {
@@ -76,6 +78,38 @@ function readJson(key) {
   } catch {
     return null;
   }
+}
+
+function createEmptyStreamMetadata() {
+  return {
+    messageId: "",
+    model: "",
+    provider: "",
+    promptTokens: null,
+    completionTokens: null,
+    totalTokens: null,
+    usageSource: "",
+    finishReason: "",
+    latencyMs: null,
+  };
+}
+
+function parseStreamPayload(data) {
+  try {
+    return JSON.parse(data);
+  } catch {
+    return null;
+  }
+}
+
+function estimateTokenCount(text) {
+  const value = String(text || "");
+  if (!value) {
+    return 0;
+  }
+  const cjkMatches = value.match(/[\u3400-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]/g) || [];
+  const remainder = value.replace(/[\u3400-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]/g, "");
+  return cjkMatches.length + Math.ceil(remainder.length / 4);
 }
 
 function clearAuth() {
@@ -153,6 +187,8 @@ function resetStreamingState() {
   state.chatBusy = false;
   state.pendingReply = false;
   state.streamingContent = "";
+  state.streamMetadata = createEmptyStreamMetadata();
+  state.streamStartedAt = 0;
 }
 
 function parseSseEvent(block) {
@@ -481,6 +517,7 @@ function renderMessage(message, pending = false) {
       ? `${escapeHtml(message.content)}<span class="streaming-cursor" aria-hidden="true"></span>`
       : '<span class="typing-dots" aria-label="正在生成回复"><span></span><span></span><span></span></span>'
     : escapeHtml(message.content);
+  const stats = isUser ? "" : renderMessageStats(message);
 
   return `
     <article class="message-row ${isUser ? "user" : "assistant"} ${pending ? "pending" : ""}">
@@ -493,8 +530,58 @@ function renderMessage(message, pending = false) {
           <span>${escapeHtml(formatMessageTime(message.createTime))}</span>
         </div>
         <div class="message-bubble">${content}</div>
+        ${stats}
       </div>
     </article>
+  `;
+}
+
+function renderMessageStats(message) {
+  const items = [];
+  if (message.model) {
+    items.push({ text: message.model });
+  }
+
+  if (message.totalTokens !== null && message.totalTokens !== undefined) {
+    const tokenTitle = [
+      message.promptTokens !== null && message.promptTokens !== undefined
+        ? `输入 ${message.promptTokens}`
+        : "",
+      message.completionTokens !== null && message.completionTokens !== undefined
+        ? `输出 ${message.completionTokens}`
+        : "",
+    ]
+      .filter(Boolean)
+      .join(" / ");
+    const estimated = message.usageSource === "estimated" ? "预估 " : "";
+    items.push({
+      text: `${estimated}${message.totalTokens} Token`,
+      title: tokenTitle,
+    });
+  }
+
+  if (message.latencyMs !== null && message.latencyMs !== undefined) {
+    items.push({ text: `${(message.latencyMs / 1000).toFixed(1)}s` });
+  }
+
+  if (message.finishReason === "cancelled") {
+    items.push({ text: "已停止" });
+  } else if (message.finishReason === "error") {
+    items.push({ text: "生成失败" });
+  }
+
+  if (!items.length) {
+    return "";
+  }
+  return `
+    <div class="message-stats">
+      ${items
+        .map(
+          (item) =>
+            `<span${item.title ? ` title="${escapeHtml(item.title)}"` : ""}>${escapeHtml(item.text)}</span>`,
+        )
+        .join("")}
+    </div>
   `;
 }
 
@@ -559,6 +646,7 @@ function renderChatContent() {
               role: "assistant",
               content: state.streamingContent,
               createTime: new Date().toISOString(),
+              ...state.streamMetadata,
             },
             true,
           )
@@ -1630,20 +1718,38 @@ function stopGeneration() {
   }
 
   const partialReply = state.streamingContent;
+  const streamMetadata = { ...state.streamMetadata };
+  const estimatedCompletionTokens = estimateTokenCount(partialReply);
+  const estimatedTotalTokens =
+    estimatedCompletionTokens + (streamMetadata.promptTokens || 0);
+  const latencyMs = state.streamStartedAt
+    ? Date.now() - state.streamStartedAt
+    : streamMetadata.latencyMs;
+  const sessionId = state.activeSessionId;
   controller.abort();
   state.streamAbortController = null;
   state.chatBusy = false;
   state.pendingReply = false;
   state.streamingContent = "";
+  state.streamMetadata = createEmptyStreamMetadata();
+  state.streamStartedAt = 0;
 
   if (partialReply.trim()) {
     state.messages = [
       ...state.messages,
       {
-        id: `stopped-${Date.now()}`,
+        id: streamMetadata.messageId || `stopped-${Date.now()}`,
         role: "assistant",
         content: partialReply,
-        tokens: 0,
+        tokens: estimatedTotalTokens,
+        promptTokens: streamMetadata.promptTokens,
+        completionTokens: estimatedCompletionTokens,
+        totalTokens: estimatedTotalTokens,
+        model: streamMetadata.model,
+        provider: streamMetadata.provider,
+        finishReason: "cancelled",
+        latencyMs,
+        usageSource: "estimated",
         createTime: new Date().toISOString(),
       },
     ];
@@ -1651,6 +1757,18 @@ function stopGeneration() {
 
   renderWorkspace();
   showToast("info", "已停止生成");
+
+  window.setTimeout(async () => {
+    if (state.chatBusy || state.activeSessionId !== sessionId) {
+      return;
+    }
+    try {
+      await loadMessages(sessionId, { render: false });
+      renderWorkspace();
+    } catch {
+      // 后端可能仍在保存部分回复，保留前端已经显示的内容即可。
+    }
+  }, 1000);
 }
 
 async function sendMessage(content) {
@@ -1671,6 +1789,8 @@ async function sendMessage(content) {
   state.chatBusy = true;
   state.pendingReply = true;
   state.streamingContent = "";
+  state.streamMetadata = createEmptyStreamMetadata();
+  state.streamStartedAt = Date.now();
   const streamController = new AbortController();
   state.streamAbortController = streamController;
   renderWorkspace();
@@ -1683,11 +1803,51 @@ async function sendMessage(content) {
         content: text,
       },
       (event) => {
-        if (
-          state.streamAbortController !== streamController ||
-          state.activeSessionId !== session.id ||
-          event.event !== "delta"
-        ) {
+        if (state.streamAbortController !== streamController || state.activeSessionId !== session.id) {
+          return;
+        }
+        if (event.event === "start") {
+          const payload = parseStreamPayload(event.data);
+          if (payload) {
+            state.streamMetadata = {
+              ...state.streamMetadata,
+              messageId: payload.messageId || "",
+              model: payload.model || "",
+              provider: payload.provider || "",
+            };
+          }
+          return;
+        }
+        if (event.event === "usage") {
+          const payload = parseStreamPayload(event.data);
+          if (payload) {
+            state.streamMetadata = {
+              ...state.streamMetadata,
+              promptTokens: payload.promptTokens,
+              completionTokens: payload.completionTokens,
+              totalTokens: payload.totalTokens,
+              usageSource: payload.usageSource || "",
+            };
+          }
+          return;
+        }
+        if (event.event === "done") {
+          const payload = parseStreamPayload(event.data);
+          if (payload) {
+            state.streamMetadata = {
+              ...state.streamMetadata,
+              messageId: payload.messageId || state.streamMetadata.messageId,
+              promptTokens: payload.promptTokens,
+              completionTokens: payload.completionTokens,
+              totalTokens: payload.totalTokens,
+              usageSource: payload.usageSource || state.streamMetadata.usageSource,
+              finishReason: payload.finishReason || "",
+              latencyMs: payload.latencyMs,
+            };
+          }
+          return;
+        }
+        if (event.event !== "delta") {
           return;
         }
         state.streamingContent += event.data;
@@ -1719,6 +1879,8 @@ async function sendMessage(content) {
       state.chatBusy = false;
       state.pendingReply = false;
       state.streamingContent = "";
+      state.streamMetadata = createEmptyStreamMetadata();
+      state.streamStartedAt = 0;
       renderWorkspace();
     }
   }

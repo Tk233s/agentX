@@ -39,6 +39,12 @@ public class MessageDomainServiceImpl implements IMessageDomainService {
         return message;
     }
 
+    @Transactional
+    public MessageEntity saveAssistantMessage(MessageEntity message) {
+        messageRepository.save(message);
+        return message;
+    }
+
     public List<MessageEntity> listMessages(String sessionId, String userId) {
         SessionEntity session = sessionRepository.findById(sessionId);
         if (session == null) {

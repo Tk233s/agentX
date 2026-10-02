@@ -4,13 +4,16 @@
 
     <insert id="insert" parameterType="org.example.infrastructure.dao.po.MessagePO">
         INSERT INTO message
-            (id, session_id, role, content, tokens, created_at)
+            (id, session_id, role, content, tokens, prompt_tokens, completion_tokens, total_tokens,
+             model, provider, finish_reason, latency_ms, usage_source, created_at)
         VALUES
-            (#{id}, #{sessionId}, #{role}, #{content}, #{tokens}, #{createdAt})
+            (#{id}, #{sessionId}, #{role}, #{content}, #{tokens}, #{promptTokens}, #{completionTokens},
+             #{totalTokens}, #{model}, #{provider}, #{finishReason}, #{latencyMs}, #{usageSource}, #{createdAt})
     </insert>
 
     <select id="queryBySessionId" parameterType="java.lang.String" resultType="org.example.infrastructure.dao.po.MessagePO">
-        SELECT id, session_id, role, content, tokens, created_at
+        SELECT id, session_id, role, content, tokens, prompt_tokens, completion_tokens, total_tokens,
+               model, provider, finish_reason, latency_ms, usage_source, created_at
         FROM message
         WHERE session_id = #{sessionId}
         ORDER BY created_at ASC

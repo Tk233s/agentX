@@ -19,6 +19,14 @@ public class MessageAssembler {
         res.setRole(entity.getRole());
         res.setContent(entity.getContent());
         res.setTokens(entity.getTokens());
+        res.setPromptTokens(entity.getPromptTokens());
+        res.setCompletionTokens(entity.getCompletionTokens());
+        res.setTotalTokens(entity.getTotalTokens());
+        res.setModel(entity.getModel());
+        res.setProvider(entity.getProvider());
+        res.setFinishReason(entity.getFinishReason());
+        res.setLatencyMs(entity.getLatencyMs());
+        res.setUsageSource(entity.getUsageSource());
         res.setCreateTime(entity.getCreatedAt());
         return res;
     }
