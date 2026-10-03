@@ -1,6 +1,7 @@
 package org.example.domain.session.service;
 
 import org.example.domain.session.model.entity.SessionEntity;
+import org.example.domain.session.model.valobj.SessionTokenBudget;
 
 import java.util.List;
 
@@ -33,4 +34,9 @@ public interface ISessionDomainService {
      * 根据用户ID查询所有会话
      */
     List<SessionEntity> listSessions(String userId);
+
+    /**
+     * 累加会话已使用Token，并返回累加后的预算状态。
+     */
+    SessionTokenBudget addUsedTokens(String id, String userId, long tokens);
 }

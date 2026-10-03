@@ -2,7 +2,6 @@ package org.example.trigger.dto.agent;
 
 import lombok.Data;
 
-import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 
 /**
@@ -38,10 +37,6 @@ public class AgentReq {
 
     /** 模型ID */
     private String modelId;
-
-    /** 最大Token数 */
-    @Min(value = 1, message = "maxTokens最小值为1")
-    private Integer maxTokens;
 
     /** 启用的工具名称列表，如 ["weather", "file"] */
     private java.util.List<String> tools;

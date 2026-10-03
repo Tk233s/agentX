@@ -13,6 +13,10 @@ public class LLMEntity {
     private String model;
     private String apiKey;
     private String baseUrl;
+
+    /**
+     * 单次模型生成的安全上限；由基础设施层在为空时使用默认值，不属于用户配置。
+     */
     private Integer maxTokens;
 
     private String provider;

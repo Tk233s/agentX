@@ -37,9 +37,6 @@ public class AgentEntity {
     /** 模型ID */
     private String modelId;
 
-    /** 最大Token数 */
-    private Integer maxTokens;
-
     /**
      * 工具名称列表。该 Agent 配置启用的工具，如 ["weather", "file"]。
      * 对话时会传给基础设施层，基础设施根据名称从 ToolRegistry 取出工具实例注册给 LLM。
@@ -62,12 +59,10 @@ public class AgentEntity {
     /**
      * 工厂方法：创建新的智能体
      * 由领域层统一负责初始状态（id、enabled、时间戳），外部只提供业务字段。
-     * maxTokens 为空时由基础设施层使用默认值。
      */
     public static AgentEntity createNew(String name, String avatar, String description,
                                         String systemPrompt, String welcomeMessage, String userId,
                                         String provider, String modelId,
-                                        Integer maxTokens,
                                         java.util.List<String> tools) {
         AgentEntity agent = new AgentEntity();
         agent.setId(UUID.randomUUID().toString().replace("-", ""));
@@ -78,7 +73,6 @@ public class AgentEntity {
         agent.setWelcomeMessage(welcomeMessage);
         agent.setProvider(provider);
         agent.setModelId(modelId);
-        agent.setMaxTokens(maxTokens);
         agent.setTools(tools);
         agent.setEnabled(true);
         agent.setUserId(userId);

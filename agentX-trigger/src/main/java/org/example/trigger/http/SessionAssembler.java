@@ -14,7 +14,8 @@ public class SessionAssembler {
         return SessionEntity.createNew(
                 req.getAgentId(),
                 userId,
-                req.getTitle());
+                req.getTitle(),
+                req.getTokenLimit());
     }
 
     /** 领域实体 -> 出参 */
@@ -24,6 +25,8 @@ public class SessionAssembler {
         res.setTitle(entity.getTitle());
         res.setAgentId(entity.getAgentId());
         res.setUserId(entity.getUserId());
+        res.setTokenLimit(entity.getTokenLimit());
+        res.setUsedTokens(entity.getUsedTokens());
         res.setCreateTime(entity.getCreatedAt());
         res.setUpdateTime(entity.getUpdatedAt());
         return res;

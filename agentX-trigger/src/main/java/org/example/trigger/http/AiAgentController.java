@@ -66,7 +66,7 @@ public class AiAgentController {
      * @return 统一响应
      */
     @PostMapping("/delete")
-    public Response<Void> deleteAgent(@RequestParam String id) {
+    public Response<Void> deleteAgent(@RequestParam("id") String id) {
         agentDomainService.deleteAgent(id, UserContext.requireCurrentUserId());
         return Response.success();
     }
@@ -77,7 +77,7 @@ public class AiAgentController {
      * @return 智能体信息，不存在返回null
      */
     @GetMapping("/get")
-    public Response<AgentRes> getAgent(@RequestParam String id) {
+    public Response<AgentRes> getAgent(@RequestParam("id") String id) {
         AgentEntity agent = agentDomainService.getAgent(id, UserContext.requireCurrentUserId());
         if (agent == null) {
             return Response.error(ResponseCode.ILLEGAL_PARAMETER.getCode(), "智能体不存在");

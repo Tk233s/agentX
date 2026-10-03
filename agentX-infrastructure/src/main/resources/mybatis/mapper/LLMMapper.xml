@@ -5,11 +5,11 @@
     <insert id="insert" parameterType="org.example.infrastructure.dao.po.AgentPO">
         INSERT INTO agent
             (id, name, avatar, description, system_prompt, welcome_message,
-             provider, model_id, max_tokens, tools_json,
+             provider, model_id, tools_json,
              enabled, user_id, created_at, updated_at)
         VALUES
             (#{id}, #{name}, #{avatar}, #{description}, #{systemPrompt}, #{welcomeMessage},
-             #{provider}, #{modelId}, #{maxTokens}, #{toolsJson},
+             #{provider}, #{modelId}, #{toolsJson},
              #{enabled}, #{userId}, #{createdAt}, #{updatedAt})
     </insert>
 
@@ -22,7 +22,6 @@
             welcome_message = #{welcomeMessage},
             provider        = #{provider},
             model_id        = #{modelId},
-            max_tokens      = #{maxTokens},
             tools_json      = #{toolsJson},
             enabled         = #{enabled},
             user_id         = #{userId},
@@ -37,7 +36,7 @@
 
     <select id="queryById" parameterType="java.lang.String" resultType="org.example.infrastructure.dao.po.AgentPO">
         SELECT id, name, avatar, description, system_prompt, welcome_message,
-               provider, model_id, max_tokens, tools_json,
+               provider, model_id, tools_json,
                enabled, user_id, created_at, updated_at
         FROM agent
         WHERE id = #{id}
@@ -45,7 +44,7 @@
 
     <select id="queryByUserId" parameterType="java.lang.String" resultType="org.example.infrastructure.dao.po.AgentPO">
         SELECT id, name, avatar, description, system_prompt, welcome_message,
-               provider, model_id, max_tokens, tools_json,
+               provider, model_id, tools_json,
                enabled, user_id, created_at, updated_at
         FROM agent
         WHERE user_id = #{userId}

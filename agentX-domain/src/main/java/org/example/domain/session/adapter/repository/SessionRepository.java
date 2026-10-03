@@ -33,4 +33,11 @@ public interface SessionRepository {
      * 根据用户ID查询所有会话（按最后更新时间倒序）
      */
     List<SessionEntity> queryByUserId(String userId);
+
+    /**
+     * 原子累加会话已使用Token。
+     *
+     * @return 影响行数
+     */
+    int incrementUsedTokens(String id, long tokens);
 }

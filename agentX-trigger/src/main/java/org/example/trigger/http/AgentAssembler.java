@@ -22,7 +22,6 @@ public class AgentAssembler {
                 userId,
                 req.getProvider(),
                 req.getModelId(),
-                req.getMaxTokens(),
                 req.getTools());
     }
 
@@ -37,7 +36,6 @@ public class AgentAssembler {
         agent.setWelcomeMessage(req.getWelcomeMessage());
         agent.setProvider(req.getProvider());
         agent.setModelId(req.getModelId());
-        agent.setMaxTokens(req.getMaxTokens());
         agent.setTools(req.getTools());
         return agent;
     }
@@ -53,7 +51,6 @@ public class AgentAssembler {
         res.setWelcomeMessage(entity.getWelcomeMessage());
         res.setProvider(entity.getProvider());
         res.setModelId(entity.getModelId());
-        res.setMaxTokens(entity.getMaxTokens());
         res.setTools(entity.getTools());
         res.setEnabled(entity.getEnabled());
         res.setCreateTime(entity.getCreatedAt());

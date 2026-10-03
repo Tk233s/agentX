@@ -1,6 +1,7 @@
 package org.example.infrastructure.dao;
 
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
 import org.example.infrastructure.dao.po.SessionPO;
 
 import java.util.List;
@@ -20,4 +21,6 @@ public interface ISessionDao {
     SessionPO queryById(String id);
 
     List<SessionPO> queryByUserId(String userId);
+
+    int incrementUsedTokens(@Param("id") String id, @Param("tokens") long tokens);
 }

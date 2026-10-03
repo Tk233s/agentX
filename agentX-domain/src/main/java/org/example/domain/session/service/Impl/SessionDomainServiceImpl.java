@@ -5,6 +5,7 @@ import org.example.domain.agent.model.entity.AgentEntity;
 import org.example.domain.message.adapter.repository.MessageRepository;
 import org.example.domain.session.adapter.repository.SessionRepository;
 import org.example.domain.session.model.entity.SessionEntity;
+import org.example.domain.session.model.valobj.SessionTokenBudget;
 import org.example.domain.session.service.ISessionDomainService;
 import org.example.types.enums.ResponseCode;
 import org.example.types.exception.AppException;
@@ -81,6 +82,22 @@ public class SessionDomainServiceImpl implements ISessionDomainService {
 
     public List<SessionEntity> listSessions(String userId) {
         return sessionRepository.queryByUserId(userId);
+    }
+
+    @Transactional
+    public SessionTokenBudget addUsedTokens(String id, String userId, long tokens) {
+        if (tokens < 0) {
+            throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "Token使用量不能为负数");
+        }
+        SessionEntity session = requireOwnedSession(id, userId);
+        if (tokens > 0) {
+            int rows = sessionRepository.incrementUsedTokens(id, tokens);
+            if (rows == 0) {
+                throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "会话不存在");
+            }
+            session = sessionRepository.findById(id);
+        }
+        return session.tokenBudget();
     }
 
     private SessionEntity requireOwnedSession(String id, String userId) {

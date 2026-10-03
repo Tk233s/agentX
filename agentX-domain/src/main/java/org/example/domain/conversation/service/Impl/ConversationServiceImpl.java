@@ -15,6 +15,7 @@ import org.example.domain.conversation.service.IConversationService;
 import org.example.domain.message.model.entity.MessageEntity;
 import org.example.domain.message.service.IMessageDomainService;
 import org.example.domain.session.model.entity.SessionEntity;
+import org.example.domain.session.model.valobj.SessionTokenBudget;
 import org.example.domain.session.service.ISessionDomainService;
 import org.example.types.enums.ResponseCode;
 import org.example.types.exception.AppException;
@@ -62,7 +63,8 @@ public class ConversationServiceImpl implements IConversationService {
 
     @Override
     public String doConversation(String sessionId, String userId, String content) {
-        LLMEntity llmEntity = prepareConversation(sessionId, userId, content);
+        PreparedConversation prepared = prepareConversation(sessionId, userId, content);
+        LLMEntity llmEntity = prepared.llmEntity();
 
         long startedAt = System.nanoTime();
         LLMResult result = llmPort.call(llmEntity);
@@ -85,17 +87,20 @@ public class ConversationServiceImpl implements IConversationService {
                 normalizeFinishReason(result.finishReason()),
                 latencyMs);
         messageDomainService.saveAssistantMessage(message);
+        sessionDomainService.addUsedTokens(sessionId, userId, tokenDelta(usage));
         return reply;
     }
 
     @Override
     public Flux<ConversationStreamEvent> streamConversation(String sessionId, String userId, String content) {
-        LLMEntity llmEntity = prepareConversation(sessionId, userId, content);
+        PreparedConversation prepared = prepareConversation(sessionId, userId, content);
+        LLMEntity llmEntity = prepared.llmEntity();
         String messageId = UUID.randomUUID().toString().replace("-", "");
         StringBuilder reply = new StringBuilder();
         AtomicBoolean persisted = new AtomicBoolean(false);
         AtomicBoolean usageEventSent = new AtomicBoolean(false);
         AtomicReference<TokenUsage> usageRef = new AtomicReference<>();
+        AtomicReference<SessionTokenBudget> tokenBudgetRef = new AtomicReference<>(prepared.tokenBudget());
         AtomicReference<String> finishReasonRef = new AtomicReference<>("stop");
         AtomicLong finishedAt = new AtomicLong(0L);
         long startedAt = System.nanoTime();
@@ -132,15 +137,20 @@ public class ConversationServiceImpl implements IConversationService {
 
         Runnable persistReply = () -> {
             if (!reply.isEmpty() && persisted.compareAndSet(false, true)) {
+                TokenUsage finalUsage = resolveStreamUsage.get();
                 messageDomainService.saveAssistantMessage(MessageEntity.createAssistantMessage(
                         messageId,
                         sessionId,
                         reply.toString(),
-                        resolveStreamUsage.get(),
+                        finalUsage,
                         llmEntity.getModel(),
                         llmEntity.getProvider(),
                         normalizeFinishReason(finishReasonRef.get()),
                         resolveLatency.get()));
+                tokenBudgetRef.set(sessionDomainService.addUsedTokens(
+                        sessionId,
+                        userId,
+                        tokenDelta(finalUsage)));
             }
         };
 
@@ -169,14 +179,16 @@ public class ConversationServiceImpl implements IConversationService {
                         messageId,
                         normalizeFinishReason(finishReasonRef.get()),
                         resolveLatency.get(),
-                        resolveStreamUsage.get())))
+                        resolveStreamUsage.get(),
+                        tokenBudgetRef.get())))
                 .subscribeOn(Schedulers.boundedElastic());
 
         return Flux.concat(
                         Flux.just(ConversationStreamEvent.start(
                                 messageId,
                                 llmEntity.getModel(),
-                                llmEntity.getProvider())),
+                                llmEntity.getProvider(),
+                                prepared.tokenBudget())),
                         chunkEvents,
                         finalEvents)
                 .doFinally(signalType -> {
@@ -227,6 +239,13 @@ public class ConversationServiceImpl implements IConversationService {
         return tokenEstimatorPort.estimate(promptText.toString());
     }
 
+    private long tokenDelta(TokenUsage usage) {
+        if (usage == null || usage.totalTokens() == null) {
+            return 0L;
+        }
+        return Math.max(usage.totalTokens(), 0);
+    }
+
     private String normalizeFinishReason(String finishReason) {
         return finishReason == null || finishReason.isBlank()
                 ? "stop"
@@ -236,14 +255,20 @@ public class ConversationServiceImpl implements IConversationService {
     /**
      * 装载一次对话所需的会话、Agent、API Key 和历史消息。
      */
-    private LLMEntity prepareConversation(String sessionId, String userId, String content) {
+    private PreparedConversation prepareConversation(String sessionId, String userId, String content) {
         // 1. 查会话 → 拿到 agentId
         SessionEntity session = sessionDomainService.getSession(sessionId, userId);
         if (session == null) {
             throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "会话不存在");
         }
+        SessionTokenBudget tokenBudget = session.tokenBudget();
+        if (tokenBudget.isExhausted()) {
+            throw new AppException(
+                    ResponseCode.TOKEN_LIMIT_EXCEEDED.getCode(),
+                    tokenLimitExceededMessage(tokenBudget));
+        }
 
-        // 2. 查 Agent → 拿 systemPrompt、modelId、provider、maxTokens 等
+        // 2. 查 Agent → 拿 systemPrompt、modelId、provider 等
         AgentEntity agent = agentDomainService.getAgent(session.getAgentId(), userId);
         if (agent == null) {
             throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "智能体不存在");
@@ -267,13 +292,23 @@ public class ConversationServiceImpl implements IConversationService {
                 .model(agent.getModelId())
                 .apiKey(apiKey.getApiKey())
                 .baseUrl(apiKey.getBaseUrl())
-                .maxTokens(agent.getMaxTokens())
                 .provider(agent.getProvider())
                 .systemPrompt(agent.getSystemPrompt())
                 .messages(messages)
                 .tools(agent.getTools())  // ← 装填工具：Agent 配置的工具名列表
                 .build();
 
-        return llmEntity;
+        return new PreparedConversation(llmEntity, tokenBudget);
+    }
+
+    private String tokenLimitExceededMessage(SessionTokenBudget tokenBudget) {
+        return "本会话Token额度已用完（已用 "
+                + tokenBudget.usedTokens()
+                + " / "
+                + tokenBudget.limit()
+                + "）";
+    }
+
+    private record PreparedConversation(LLMEntity llmEntity, SessionTokenBudget tokenBudget) {
     }
 }

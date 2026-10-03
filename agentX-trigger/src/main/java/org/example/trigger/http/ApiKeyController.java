@@ -49,7 +49,7 @@ public class ApiKeyController {
      * 删除API密钥
      */
     @PostMapping("/delete")
-    public Response<Void> deleteApiKey(@RequestParam String id) {
+    public Response<Void> deleteApiKey(@RequestParam("id") String id) {
         apiKeyDomainService.deleteApiKey(id, UserContext.requireCurrentUserId());
         return Response.success();
     }
@@ -58,7 +58,7 @@ public class ApiKeyController {
      * 根据ID查询API密钥
      */
     @GetMapping("/get")
-    public Response<ApiKeyRes> getApiKey(@RequestParam String id) {
+    public Response<ApiKeyRes> getApiKey(@RequestParam("id") String id) {
         ApiKeyEntity apiKey = apiKeyDomainService.getApiKey(id, UserContext.requireCurrentUserId());
         if (apiKey == null) {
             return Response.error(ResponseCode.ILLEGAL_PARAMETER.getCode(), "API密钥不存在");

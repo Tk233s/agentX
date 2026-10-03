@@ -35,9 +35,6 @@ public class AgentRes {
     /** 模型ID */
     private String modelId;
 
-    /** 最大Token数 */
-    private Integer maxTokens;
-
     /** 启用的工具名称列表 */
     private java.util.List<String> tools;
 

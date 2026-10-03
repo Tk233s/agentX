@@ -34,9 +34,6 @@ public class AgentPO {
     /** 模型ID */
     private String modelId;
 
-    /** 最大Token数 */
-    private Integer maxTokens;
-
     /** 工具名称列表（JSON 数组字符串）：如 ["weather", "file"] */
     private String toolsJson;
 

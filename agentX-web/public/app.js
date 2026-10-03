@@ -357,6 +357,51 @@ function formatMessageTime(value) {
   return date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
 }
 
+function formatTokenCount(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return "0";
+  }
+  return Math.max(0, Math.trunc(number)).toLocaleString("zh-CN");
+}
+
+function sessionTokenSummary(session, compact = false) {
+  if (!session) {
+    return "";
+  }
+  const used = Number(session.usedTokens || 0);
+  if (session.tokenLimit === null || session.tokenLimit === undefined) {
+    return compact ? `已用 ${formatTokenCount(used)} Token` : `Token 不限 · 已用 ${formatTokenCount(used)}`;
+  }
+  const limit = Number(session.tokenLimit);
+  const remaining = Math.max(limit - used, 0);
+  return compact
+    ? `${formatTokenCount(used)} / ${formatTokenCount(limit)} Token`
+    : `${formatTokenCount(used)} / ${formatTokenCount(limit)} Token · 剩余 ${formatTokenCount(remaining)}`;
+}
+
+function isSessionTokenExhausted(session) {
+  if (!session || session.tokenLimit === null || session.tokenLimit === undefined) {
+    return false;
+  }
+  return Number(session.usedTokens || 0) >= Number(session.tokenLimit);
+}
+
+function applySessionTokenBudget(payload) {
+  if (!payload || !state.activeSessionId) {
+    return;
+  }
+  state.sessions = state.sessions.map((session) =>
+    session.id === state.activeSessionId
+      ? {
+          ...session,
+          tokenLimit: payload.tokenLimit ?? null,
+          usedTokens: payload.usedTokens ?? session.usedTokens ?? 0,
+        }
+      : session,
+  );
+}
+
 function showToast(type, title, message = "") {
   const toast = document.createElement("div");
   toast.className = `toast ${type}`;
@@ -485,7 +530,10 @@ function renderSessions() {
           tabindex="0"
         >
           <div class="session-title">${escapeHtml(session.title || "新会话")}</div>
-          <div class="session-time">${escapeHtml(formatSessionTime(session.updateTime || session.createTime))}</div>
+          <div class="session-time">
+            ${escapeHtml(formatSessionTime(session.updateTime || session.createTime))}
+            · ${escapeHtml(sessionTokenSummary(session, true))}
+          </div>
           <div class="session-actions">
             <button
               class="icon-button"
@@ -836,6 +884,7 @@ function renderAgentManager() {
 function renderWorkspace() {
   const agent = activeAgent();
   const session = activeSession();
+  const sessionTokenLocked = isSessionTokenExhausted(session);
   const username = state.auth?.username || "admin";
 
   app.innerHTML = `
@@ -947,7 +996,14 @@ function renderWorkspace() {
                   ${renderAgentPicker()}
                   <div class="workspace-title">
                     <h1>${escapeHtml(session?.title || agent?.name || "AgentX")}</h1>
-                    <p>${escapeHtml(agent?.modelId || agent?.provider || "AI Workspace")}</p>
+                    <p>
+                      <span>${escapeHtml(agent?.modelId || agent?.provider || "AI Workspace")}</span>
+                      ${
+                        session
+                          ? `<span class="workspace-token-usage ${sessionTokenLocked ? "exhausted" : ""}">${escapeHtml(sessionTokenSummary(session))}</span>`
+                          : ""
+                      }
+                    </p>
                   </div>
                 `
                 : `
@@ -1002,13 +1058,13 @@ function renderWorkspace() {
                       name="content"
                       rows="1"
                       maxlength="12000"
-                      placeholder="输入消息"
-                      ${!session || state.chatBusy ? "disabled" : ""}
+                      placeholder="${sessionTokenLocked ? "本会话 Token 额度已用完" : "输入消息"}"
+                      ${!session || state.chatBusy || sessionTokenLocked ? "disabled" : ""}
                     ></textarea>
                     <div class="composer-footer">
                       <span class="composer-hint">${
                         session
-                          ? escapeHtml(agent?.name || "Agent")
+                          ? escapeHtml(`${agent?.name || "Agent"} · ${sessionTokenSummary(session, true)}`)
                           : "请先创建会话"
                       }</span>
                       ${
@@ -1028,7 +1084,7 @@ function renderWorkspace() {
                               type="submit"
                               title="发送"
                               aria-label="发送消息"
-                              ${!session ? "disabled" : ""}
+                              ${!session || sessionTokenLocked ? "disabled" : ""}
                             >${svgIcon("send", 17)}</button>
                           `
                       }
@@ -1061,7 +1117,6 @@ function renderAgentEditorModal() {
     welcomeMessage: agent?.welcomeMessage || "",
     provider: agent?.provider || "openai",
     modelId: agent?.modelId || "",
-    maxTokens: agent?.maxTokens ?? "",
   };
   const toolNames = Array.from(new Set(["weather", "file", ...(agent?.tools || [])]));
   const selectedTools = new Set(agent?.tools || []);
@@ -1112,10 +1167,6 @@ function renderAgentEditorModal() {
                   <label for="agent-model">模型 ID</label>
                   <input id="agent-model" name="modelId" maxlength="120" value="${escapeHtml(values.modelId)}" placeholder="gpt-4o-mini" required />
                 </div>
-              </div>
-              <div class="field">
-                <label for="agent-max-tokens">Max Tokens</label>
-                <input id="agent-max-tokens" name="maxTokens" type="number" min="1" step="1" value="${escapeHtml(values.maxTokens)}" />
               </div>
             </section>
 
@@ -1234,6 +1285,17 @@ function renderModal() {
               <div class="field">
                 <label for="new-session-title">标题</label>
                 <input id="new-session-title" name="title" maxlength="128" placeholder="新会话" />
+              </div>
+              <div class="field">
+                <label for="new-session-token-limit">会话 Token 上限</label>
+                <input
+                  id="new-session-token-limit"
+                  name="tokenLimit"
+                  type="number"
+                  min="1"
+                  step="1"
+                  placeholder="留空则不限制"
+                />
               </div>
             </div>
             <div class="modal-footer">
@@ -1495,7 +1557,7 @@ async function selectAgent(agentId) {
   }
 }
 
-async function createSession(agentId, title) {
+async function createSession(agentId, title, tokenLimit) {
   state.workspaceBusy = true;
   state.modal = null;
   renderWorkspace();
@@ -1506,6 +1568,7 @@ async function createSession(agentId, title) {
       body: {
         agentId,
         title: title.trim() || "新会话",
+        tokenLimit,
       },
     });
 
@@ -1587,14 +1650,14 @@ async function deleteSession(sessionId) {
   }
 }
 
-function optionalNumber(value) {
+function optionalPositiveInteger(value) {
   const text = String(value ?? "").trim();
   if (!text) {
     return null;
   }
   const number = Number(text);
-  if (!Number.isFinite(number)) {
-    throw new ApiError("数值参数格式不正确");
+  if (!Number.isInteger(number) || number < 1) {
+    throw new ApiError("Token 上限必须是大于 0 的整数");
   }
   return number;
 }
@@ -1614,7 +1677,6 @@ async function saveAgent(form) {
       welcomeMessage: String(formData.get("welcomeMessage") || "").trim() || null,
       provider: String(formData.get("provider") || "").trim(),
       modelId: String(formData.get("modelId") || "").trim(),
-      maxTokens: optionalNumber(formData.get("maxTokens")),
       tools: formData.getAll("tools").map(String),
     };
   } catch (error) {
@@ -1757,6 +1819,10 @@ async function sendMessage(content) {
   if (!session || !text || state.chatBusy) {
     return;
   }
+  if (isSessionTokenExhausted(session)) {
+    showToast("info", "Token 额度已用完", "该会话不能再发送新消息。");
+    return;
+  }
 
   const optimisticMessage = {
     id: `pending-${Date.now()}`,
@@ -1789,6 +1855,7 @@ async function sendMessage(content) {
         if (event.event === "start") {
           const payload = parseStreamPayload(event.data);
           if (payload) {
+            applySessionTokenBudget(payload);
             state.streamMetadata = {
               ...state.streamMetadata,
               messageId: payload.messageId || "",
@@ -1814,6 +1881,7 @@ async function sendMessage(content) {
         if (event.event === "done") {
           const payload = parseStreamPayload(event.data);
           if (payload) {
+            applySessionTokenBudget(payload);
             state.streamMetadata = {
               ...state.streamMetadata,
               messageId: payload.messageId || state.streamMetadata.messageId,
@@ -1824,6 +1892,9 @@ async function sendMessage(content) {
               finishReason: payload.finishReason || "",
               latencyMs: payload.latencyMs,
             };
+            if (payload.limitReached) {
+              showToast("info", "Token 额度已用完", "本次回答已完成，该会话后续消息将无法发送。");
+            }
           }
           return;
         }
@@ -1847,7 +1918,11 @@ async function sendMessage(content) {
       renderLogin(error.message);
       return;
     }
-    showToast("error", "发送失败", error.message);
+    if (error.code === "429") {
+      showToast("info", "Token 额度已用完", error.message);
+    } else {
+      showToast("error", "发送失败", error.message);
+    }
     try {
       await loadMessages(session.id, { render: false });
     } catch {
@@ -1975,7 +2050,15 @@ app.addEventListener("submit", async (event) => {
   if (form.id === "create-session-form") {
     event.preventDefault();
     const formData = new FormData(form);
-    await createSession(String(formData.get("agentId") || ""), String(formData.get("title") || ""));
+    try {
+      await createSession(
+        String(formData.get("agentId") || ""),
+        String(formData.get("title") || ""),
+        optionalPositiveInteger(formData.get("tokenLimit")),
+      );
+    } catch (error) {
+      showToast("error", "创建失败", error.message);
+    }
     return;
   }
 

@@ -49,12 +49,19 @@ public class SessionRepositoryImpl implements SessionRepository {
         return pos.stream().map(this::toEntity).collect(Collectors.toList());
     }
 
+    @Override
+    public int incrementUsedTokens(String id, long tokens) {
+        return sessionDao.incrementUsedTokens(id, tokens);
+    }
+
     private SessionPO toPO(SessionEntity entity) {
         SessionPO po = new SessionPO();
         po.setId(entity.getId());
         po.setTitle(entity.getTitle());
         po.setAgentId(entity.getAgentId());
         po.setUserId(entity.getUserId());
+        po.setTokenLimit(entity.getTokenLimit());
+        po.setUsedTokens(entity.getUsedTokens());
         po.setCreatedAt(entity.getCreatedAt());
         po.setUpdatedAt(entity.getUpdatedAt());
         return po;
@@ -69,6 +76,8 @@ public class SessionRepositoryImpl implements SessionRepository {
         entity.setTitle(po.getTitle());
         entity.setAgentId(po.getAgentId());
         entity.setUserId(po.getUserId());
+        entity.setTokenLimit(po.getTokenLimit());
+        entity.setUsedTokens(po.getUsedTokens());
         entity.setCreatedAt(po.getCreatedAt());
         entity.setUpdatedAt(po.getUpdatedAt());
         return entity;

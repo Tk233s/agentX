@@ -14,6 +14,7 @@ public enum ResponseCode {
     ILLEGAL_PARAMETER("0002", "非法参数"),
     UNAUTHORIZED("401", "未登录或登录已过期"),
     FORBIDDEN("403", "无权访问该资源"),
+    TOKEN_LIMIT_EXCEEDED("429", "本会话Token额度已用完"),
     ;
 
     private String code;

@@ -32,6 +32,8 @@ public class GlobalExceptionHandler {
             status = HttpStatus.UNAUTHORIZED;
         } else if (ResponseCode.FORBIDDEN.getCode().equals(e.getCode())) {
             status = HttpStatus.FORBIDDEN;
+        } else if (ResponseCode.TOKEN_LIMIT_EXCEEDED.getCode().equals(e.getCode())) {
+            status = HttpStatus.TOO_MANY_REQUESTS;
         }
         return ResponseEntity.status(status).body(Response.error(e.getCode(), e.getInfo()));
     }

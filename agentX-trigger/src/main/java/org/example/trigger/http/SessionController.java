@@ -38,7 +38,9 @@ public class SessionController {
      * 重命名会话
      */
     @PostMapping("/rename")
-    public Response<SessionRes> renameSession(@RequestParam String id, @RequestParam String title) {
+    public Response<SessionRes> renameSession(
+            @RequestParam("id") String id,
+            @RequestParam("title") String title) {
         SessionEntity updated = sessionDomainService.updateSessionTitle(id, UserContext.requireCurrentUserId(), title);
         return Response.success(SessionAssembler.toRes(updated));
     }
@@ -47,7 +49,7 @@ public class SessionController {
      * 删除会话（级联删除消息）
      */
     @PostMapping("/delete")
-    public Response<Void> deleteSession(@RequestParam String id) {
+    public Response<Void> deleteSession(@RequestParam("id") String id) {
         sessionDomainService.deleteSession(id, UserContext.requireCurrentUserId());
         return Response.success();
     }
@@ -56,7 +58,7 @@ public class SessionController {
      * 根据ID查询会话
      */
     @GetMapping("/get")
-    public Response<SessionRes> getSession(@RequestParam String id) {
+    public Response<SessionRes> getSession(@RequestParam("id") String id) {
         SessionEntity session = sessionDomainService.getSession(id, UserContext.requireCurrentUserId());
         if (session == null) {
             return Response.error(ResponseCode.ILLEGAL_PARAMETER.getCode(), "会话不存在");

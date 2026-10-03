@@ -25,7 +25,7 @@ public class MessageController {
      * 查询会话历史消息
      */
     @GetMapping("/list")
-    public Response<List<MessageRes>> listMessages(@RequestParam String sessionId) {
+    public Response<List<MessageRes>> listMessages(@RequestParam("sessionId") String sessionId) {
         List<MessageEntity> messages = messageDomainService.listMessages(
                 sessionId, UserContext.requireCurrentUserId());
         return Response.success(MessageAssembler.toResList(messages));

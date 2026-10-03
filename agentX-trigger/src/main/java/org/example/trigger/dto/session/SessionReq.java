@@ -2,6 +2,7 @@ package org.example.trigger.dto.session;
 
 import lombok.Data;
 
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 
 /**
@@ -20,4 +21,7 @@ public class SessionReq {
     @NotBlank(message = "智能体ID不能为空")
     private String agentId;
 
+    /** 会话累计Token上限；为空表示不限制 */
+    @Min(value = 1, message = "会话Token上限必须大于0")
+    private Long tokenLimit;
 }

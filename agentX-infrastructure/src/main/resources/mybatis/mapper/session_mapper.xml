@@ -4,9 +4,9 @@
 
     <insert id="insert" parameterType="org.example.infrastructure.dao.po.SessionPO">
         INSERT INTO session
-            (id, title, agent_id, user_id, created_at, updated_at)
+            (id, title, agent_id, user_id, token_limit, used_tokens, created_at, updated_at)
         VALUES
-            (#{id}, #{title}, #{agentId}, #{userId}, #{createdAt}, #{updatedAt})
+            (#{id}, #{title}, #{agentId}, #{userId}, #{tokenLimit}, #{usedTokens}, #{createdAt}, #{updatedAt})
     </insert>
 
     <update id="update" parameterType="org.example.infrastructure.dao.po.SessionPO">
@@ -21,14 +21,20 @@
         WHERE id = #{id}
     </delete>
 
+    <update id="incrementUsedTokens">
+        UPDATE session
+        SET used_tokens = used_tokens + #{tokens}
+        WHERE id = #{id}
+    </update>
+
     <select id="queryById" parameterType="java.lang.String" resultType="org.example.infrastructure.dao.po.SessionPO">
-        SELECT id, title, agent_id, user_id, created_at, updated_at
+        SELECT id, title, agent_id, user_id, token_limit, used_tokens, created_at, updated_at
         FROM session
         WHERE id = #{id}
     </select>
 
     <select id="queryByUserId" parameterType="java.lang.String" resultType="org.example.infrastructure.dao.po.SessionPO">
-        SELECT id, title, agent_id, user_id, created_at, updated_at
+        SELECT id, title, agent_id, user_id, token_limit, used_tokens, created_at, updated_at
         FROM session
         WHERE user_id = #{userId}
         ORDER BY updated_at DESC

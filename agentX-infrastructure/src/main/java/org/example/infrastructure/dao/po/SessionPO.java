@@ -22,6 +22,12 @@ public class SessionPO {
     /** 所属用户ID */
     private String userId;
 
+    /** 会话累计Token上限；null表示不限制 */
+    private Long tokenLimit;
+
+    /** 会话累计已使用Token */
+    private Long usedTokens;
+
     /** 创建时间 */
     private LocalDateTime createdAt;
 

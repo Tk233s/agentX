@@ -65,7 +65,6 @@ public class AgentRepositoryImpl implements AgentRepository {
         po.setWelcomeMessage(agent.getWelcomeMessage());
         po.setProvider(agent.getProvider());
         po.setModelId(agent.getModelId());
-        po.setMaxTokens(agent.getMaxTokens());
         // List<String> → JSON 字符串存入数据库
         po.setToolsJson(agent.getTools() != null ? GSON.toJson(agent.getTools()) : null);
         po.setEnabled(agent.getEnabled());
@@ -89,7 +88,6 @@ public class AgentRepositoryImpl implements AgentRepository {
         agent.setWelcomeMessage(po.getWelcomeMessage());
         agent.setProvider(po.getProvider());
         agent.setModelId(po.getModelId());
-        agent.setMaxTokens(po.getMaxTokens());
         // JSON 字符串 → List<String>
         if (po.getToolsJson() != null && !po.getToolsJson().isEmpty()) {
             agent.setTools(GSON.fromJson(po.getToolsJson(), new TypeToken<List<String>>() {}.getType()));

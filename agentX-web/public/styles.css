@@ -724,12 +724,24 @@ textarea:disabled {
 }
 
 .workspace-title p {
+  display: flex;
   margin: 2px 0 0;
   overflow: hidden;
+  align-items: center;
+  gap: 8px;
   color: var(--ink-faint);
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.workspace-token-usage {
+  flex: 0 0 auto;
+  color: var(--accent-strong);
+}
+
+.workspace-token-usage.exhausted {
+  color: var(--danger);
 }
 
 .header-actions {
