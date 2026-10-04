@@ -36,9 +36,4 @@ public interface IApiKeyDao {
      */
     List<ApiKeyPO> queryByUserId(String userId);
 
-    /**
-     * 根据用户ID和服务商查询启用的密钥
-     */
-    ApiKeyPO queryByUserIdAndProvider(@org.apache.ibatis.annotations.Param("userId") String userId,
-                                      @org.apache.ibatis.annotations.Param("provider") String provider);
 }

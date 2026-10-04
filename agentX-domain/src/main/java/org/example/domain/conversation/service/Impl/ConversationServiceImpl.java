@@ -268,17 +268,21 @@ public class ConversationServiceImpl implements IConversationService {
                     tokenLimitExceededMessage(tokenBudget));
         }
 
-        // 2. 查 Agent → 拿 systemPrompt、modelId、provider 等
+        // 2. 查 Agent → 拿 systemPrompt、modelId、apiKeyId 等
         AgentEntity agent = agentDomainService.getAgent(session.getAgentId(), userId);
         if (agent == null) {
             throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "智能体不存在");
         }
 
-        // 3. 查 ApiKey → 用 userId + provider 拿到 apiKey、baseUrl
-        ApiKeyEntity apiKey = apiKeyDomainService.getApiKeyByProvider(userId, agent.getProvider());
+        // 3. 查 Agent 绑定的 ApiKey → 拿到 apiKey、baseUrl、provider
+        ApiKeyEntity apiKey = apiKeyDomainService.getApiKey(agent.getApiKeyId(), userId);
         if (apiKey == null) {
             throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(),
-                    "未配置服务商[" + agent.getProvider() + "]的API密钥");
+                    "Agent绑定的API密钥不存在");
+        }
+        if (Boolean.FALSE.equals(apiKey.getEnabled())) {
+            throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(),
+                    "Agent绑定的API密钥已停用");
         }
 
         // 4. 存用户消息到 message 表
@@ -292,7 +296,7 @@ public class ConversationServiceImpl implements IConversationService {
                 .model(agent.getModelId())
                 .apiKey(apiKey.getApiKey())
                 .baseUrl(apiKey.getBaseUrl())
-                .provider(agent.getProvider())
+                .provider(apiKey.getProvider())
                 .systemPrompt(agent.getSystemPrompt())
                 .messages(messages)
                 .tools(agent.getTools())  // ← 装填工具：Agent 配置的工具名列表

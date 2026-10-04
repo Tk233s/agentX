@@ -4,14 +4,15 @@
 
     <insert id="insert" parameterType="org.example.infrastructure.dao.po.ApiKeyPO">
         INSERT INTO api_key
-            (id, user_id, provider, api_key, base_url, enabled, created_at, updated_at)
+            (id, user_id, name, provider, api_key, base_url, enabled, created_at, updated_at)
         VALUES
-            (#{id}, #{userId}, #{provider}, #{apiKey}, #{baseUrl}, #{enabled}, #{createdAt}, #{updatedAt})
+            (#{id}, #{userId}, #{name}, #{provider}, #{apiKey}, #{baseUrl}, #{enabled}, #{createdAt}, #{updatedAt})
     </insert>
 
     <update id="update" parameterType="org.example.infrastructure.dao.po.ApiKeyPO">
         UPDATE api_key
-        SET provider   = #{provider},
+        SET name       = #{name},
+            provider   = #{provider},
             api_key    = #{apiKey},
             base_url   = #{baseUrl},
             enabled    = #{enabled},
@@ -25,25 +26,16 @@
     </delete>
 
     <select id="queryById" parameterType="java.lang.String" resultType="org.example.infrastructure.dao.po.ApiKeyPO">
-        SELECT id, user_id, provider, api_key, base_url, enabled, created_at, updated_at
+        SELECT id, user_id, name, provider, api_key, base_url, enabled, created_at, updated_at
         FROM api_key
         WHERE id = #{id}
     </select>
 
     <select id="queryByUserId" parameterType="java.lang.String" resultType="org.example.infrastructure.dao.po.ApiKeyPO">
-        SELECT id, user_id, provider, api_key, base_url, enabled, created_at, updated_at
+        SELECT id, user_id, name, provider, api_key, base_url, enabled, created_at, updated_at
         FROM api_key
         WHERE user_id = #{userId}
         ORDER BY created_at DESC
-    </select>
-
-    <select id="queryByUserIdAndProvider" resultType="org.example.infrastructure.dao.po.ApiKeyPO">
-        SELECT id, user_id, provider, api_key, base_url, enabled, created_at, updated_at
-        FROM api_key
-        WHERE user_id = #{userId}
-          AND provider = #{provider}
-          AND enabled = 1
-        LIMIT 1
     </select>
 
 </mapper>

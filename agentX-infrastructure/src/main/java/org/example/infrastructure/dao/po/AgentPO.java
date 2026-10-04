@@ -28,8 +28,8 @@ public class AgentPO {
     /** 欢迎消息 */
     private String welcomeMessage;
 
-    /** 服务商 openai/anthropic */
-    private String provider;
+    /** 绑定的API密钥ID */
+    private String apiKeyId;
 
     /** 模型ID */
     private String modelId;

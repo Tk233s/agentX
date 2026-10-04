@@ -11,20 +11,27 @@ public class ApiKeyAssembler {
 
     /** 入参 DTO -> 领域实体（创建） */
     public static ApiKeyEntity toEntity(ApiKeyReq req, String userId) {
-        return ApiKeyEntity.createNew(
+        ApiKeyEntity entity = ApiKeyEntity.createNew(
                 userId,
+                req.getName(),
                 req.getProvider(),
                 req.getApiKey(),
                 req.getBaseUrl());
+        if (req.getEnabled() != null) {
+            entity.setEnabled(req.getEnabled());
+        }
+        return entity;
     }
 
     /** 入参 DTO -> 领域实体（更新） */
     public static ApiKeyEntity toUpdateEntity(ApiKeyReq req) {
         ApiKeyEntity entity = new ApiKeyEntity();
         entity.setId(req.getId());
+        entity.setName(req.getName());
         entity.setProvider(req.getProvider());
         entity.setApiKey(req.getApiKey());
         entity.setBaseUrl(req.getBaseUrl());
+        entity.setEnabled(req.getEnabled());
         return entity;
     }
 
@@ -32,6 +39,7 @@ public class ApiKeyAssembler {
     public static ApiKeyRes toRes(ApiKeyEntity entity) {
         ApiKeyRes res = new ApiKeyRes();
         res.setId(entity.getId());
+        res.setName(entity.getName());
         res.setProvider(entity.getProvider());
         res.setApiKey(maskApiKey(entity.getApiKey()));
         res.setBaseUrl(entity.getBaseUrl());

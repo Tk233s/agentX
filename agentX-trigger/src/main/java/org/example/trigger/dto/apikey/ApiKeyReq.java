@@ -15,15 +15,21 @@ public class ApiKeyReq {
     @NotBlank(groups = ApiKeyUpdateGroup.class, message = "API密钥ID不能为空")
     private String id;
 
-    /** 服务商 openai/anthropic */
-    @NotBlank(message = "服务商不能为空")
+    /** 密钥名称，用于区分同一协议下的多个账号或中转地址 */
+    @NotBlank(message = "密钥名称不能为空")
+    private String name;
+
+    /** 接口协议 openai/anthropic */
+    @NotBlank(message = "接口协议不能为空")
     private String provider;
 
-    /** API密钥 */
-    @NotBlank(message = "API密钥不能为空")
+    /** API密钥；更新时留空表示保留原密钥 */
     private String apiKey;
 
     /** 自定义API地址（代理/中转） */
     private String baseUrl;
+
+    /** 是否启用；创建时为空则默认启用 */
+    private Boolean enabled;
 
 }

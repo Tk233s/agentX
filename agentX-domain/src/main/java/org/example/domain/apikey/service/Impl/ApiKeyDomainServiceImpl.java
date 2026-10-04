@@ -30,8 +30,14 @@ public class ApiKeyDomainServiceImpl implements IApiKeyDomainService {
 
     @Transactional
     public ApiKeyEntity updateApiKey(ApiKeyEntity apiKey, String userId) {
-        apiKey.validate();
         ApiKeyEntity existing = requireOwnedApiKey(apiKey.getId(), userId);
+        if (apiKey.getApiKey() == null || apiKey.getApiKey().trim().isEmpty()) {
+            apiKey.setApiKey(existing.getApiKey());
+        }
+        if (apiKey.getEnabled() == null) {
+            apiKey.setEnabled(existing.getEnabled());
+        }
+        apiKey.validate();
         // 保留不可覆盖字段
         apiKey.setUserId(existing.getUserId());
         apiKey.setCreatedAt(existing.getCreatedAt());
@@ -62,10 +68,6 @@ public class ApiKeyDomainServiceImpl implements IApiKeyDomainService {
         return apiKeyRepository.queryByUserId(userId);
     }
 
-    public ApiKeyEntity getApiKeyByProvider(String userId, String provider) {
-        return apiKeyRepository.findByUserIdAndProvider(userId, provider);
-    }
-
     private ApiKeyEntity requireOwnedApiKey(String id, String userId) {
         ApiKeyEntity apiKey = apiKeyRepository.findById(id);
         if (apiKey == null) {
@@ -80,4 +82,5 @@ public class ApiKeyDomainServiceImpl implements IApiKeyDomainService {
             throw new AppException(ResponseCode.FORBIDDEN.getCode(), "无权访问该API密钥");
         }
     }
+
 }

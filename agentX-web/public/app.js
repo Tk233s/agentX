@@ -11,6 +11,7 @@ const icons = {
   bot: '<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>',
   check: '<path d="M20 6 9 17l-5-5"/>',
   chevronDown: '<path d="m6 9 6 6 6-6"/>',
+  key: '<circle cx="7.5" cy="15.5" r="3.5"/><path d="m10.5 12.5 8-8"/><path d="m15 8 2 2"/><path d="m18 5 2 2"/>',
   lock: '<rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
   logOut: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/>',
   menu: '<line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/>',
@@ -30,6 +31,7 @@ const icons = {
 const state = {
   auth: readJson(AUTH_KEY),
   agents: [],
+  apiKeys: [],
   sessions: [],
   messages: [],
   activeAgentId: sessionStorage.getItem(AGENT_KEY) || "",
@@ -39,6 +41,7 @@ const state = {
   loginBusy: false,
   workspaceBusy: false,
   agentBusy: false,
+  apiKeyBusy: false,
   messagesBusy: false,
   chatBusy: false,
   sidebarOpen: false,
@@ -119,6 +122,7 @@ function clearAuth() {
   sessionStorage.removeItem(SESSION_KEY);
   state.auth = null;
   state.agents = [];
+  state.apiKeys = [];
   state.sessions = [];
   state.messages = [];
   state.activeAgentId = "";
@@ -305,6 +309,28 @@ function activeAgent() {
 
 function activeSession() {
   return state.sessions.find((session) => session.id === state.activeSessionId) || null;
+}
+
+function apiKeyById(apiKeyId) {
+  return state.apiKeys.find((apiKey) => apiKey.id === apiKeyId) || null;
+}
+
+function apiKeyUsageCount(apiKeyId) {
+  return state.agents.filter((agent) => agent.apiKeyId === apiKeyId).length;
+}
+
+function apiKeyDisplayName(apiKey) {
+  return apiKey?.name || providerLabel(apiKey?.provider) || "未命名密钥";
+}
+
+function providerLabel(provider) {
+  if (provider === "openai") {
+    return "OpenAI 兼容";
+  }
+  if (provider === "anthropic") {
+    return "Anthropic";
+  }
+  return provider || "未配置";
 }
 
 function persistSelection() {
@@ -734,7 +760,9 @@ function renderAgentQuickList() {
 
   return state.agents
     .map(
-      (agent) => `
+      (agent) => {
+        const apiKey = apiKeyById(agent.apiKeyId);
+        return `
         <button
           class="sidebar-agent-item ${agent.id === state.activeAgentId ? "active" : ""}"
           type="button"
@@ -744,12 +772,156 @@ function renderAgentQuickList() {
           ${renderAgentAvatar(agent, 30)}
           <span class="sidebar-agent-copy">
             <span class="sidebar-agent-name">${escapeHtml(agent.name || "未命名 Agent")}</span>
-            <span class="sidebar-agent-meta">${escapeHtml(agent.modelId || agent.provider || "未配置模型")}</span>
+            <span class="sidebar-agent-meta">${escapeHtml(agent.modelId || apiKey?.name || "未配置模型")}</span>
+          </span>
+        </button>
+      `;
+      },
+    )
+    .join("");
+}
+
+function renderApiKeyQuickList() {
+  if (state.workspaceBusy && !state.apiKeys.length) {
+    return `
+      <div class="sidebar-empty">
+        <span class="spinner small"></span>
+        <div>正在加载密钥</div>
+      </div>
+    `;
+  }
+
+  if (!state.apiKeys.length) {
+    return '<div class="sidebar-empty">暂无 API 密钥</div>';
+  }
+
+  return state.apiKeys
+    .map(
+      (apiKey) => `
+        <button
+          class="sidebar-agent-item"
+          type="button"
+          data-action="edit-api-key"
+          data-api-key-id="${escapeHtml(apiKey.id)}"
+        >
+          <span class="api-key-mark">${svgIcon("key", 15)}</span>
+          <span class="sidebar-agent-copy">
+            <span class="sidebar-agent-name">${escapeHtml(apiKeyDisplayName(apiKey))}</span>
+            <span class="sidebar-agent-meta">
+              ${escapeHtml(providerLabel(apiKey.provider))} · ${escapeHtml(apiKey.apiKey || "****")}
+            </span>
           </span>
         </button>
       `,
     )
     .join("");
+}
+
+function renderApiKeyManager() {
+  if (state.workspaceBusy && !state.apiKeys.length) {
+    return `
+      <section class="agent-page">
+        <div class="agent-page-loading">
+          <span class="spinner"></span>
+          <span>正在加载 API 密钥</span>
+        </div>
+      </section>
+    `;
+  }
+
+  if (!state.apiKeys.length) {
+    return `
+      <section class="agent-page">
+        <div class="empty-state agent-empty-state">
+          <div class="empty-icon">${svgIcon("key", 24)}</div>
+          <h2>暂无 API 密钥</h2>
+          <p>配置服务商密钥后，关联该服务商的 Agent 才能发起对话。</p>
+          <button class="primary-button" type="button" data-action="new-api-key">
+            ${svgIcon("plus", 16)}
+            <span>新增 API 密钥</span>
+          </button>
+        </div>
+      </section>
+    `;
+  }
+
+  const enabledCount = state.apiKeys.filter((apiKey) => apiKey.enabled !== false).length;
+  const disabledCount = state.apiKeys.length - enabledCount;
+
+  return `
+    <section class="agent-page">
+      <div class="agent-page-toolbar">
+        <div class="api-key-summary">
+          <span class="provider-pill">${enabledCount} 个已启用</span>
+          ${disabledCount ? `<span class="muted-text">${disabledCount} 个已停用</span>` : ""}
+        </div>
+        <span class="agent-count">${state.apiKeys.length} 个 API 密钥</span>
+      </div>
+      <div class="agent-table-shell">
+        <div class="agent-table api-key-table agent-table-head" aria-hidden="true">
+          <span>密钥</span>
+          <span>API Key</span>
+          <span>Base URL</span>
+          <span>状态</span>
+          <span>更新时间</span>
+          <span></span>
+        </div>
+        <div class="agent-table-body">
+          ${state.apiKeys
+            .map((apiKey) => {
+              const usageCount = apiKeyUsageCount(apiKey.id);
+              return `
+                <article class="agent-table api-key-table agent-table-row">
+                  <div class="agent-identity">
+                    <span class="api-key-mark large">${svgIcon("key", 17)}</span>
+                    <div class="agent-identity-copy">
+                      <strong>${escapeHtml(apiKeyDisplayName(apiKey))}</strong>
+                      <span>
+                        ${escapeHtml(providerLabel(apiKey.provider))} ·
+                        ${usageCount ? `${usageCount} 个 Agent 使用` : "未关联 Agent"}
+                      </span>
+                    </div>
+                  </div>
+                  <div class="api-key-secret" data-label="API Key">
+                    <code>${escapeHtml(apiKey.apiKey || "****")}</code>
+                  </div>
+                  <div class="api-key-endpoint" data-label="Base URL" title="${escapeHtml(apiKey.baseUrl || "")}">
+                    ${escapeHtml(apiKey.baseUrl || "服务商默认地址")}
+                  </div>
+                  <div data-label="状态">
+                    <span class="config-state ${apiKey.enabled === false ? "disabled" : "enabled"}">
+                      ${apiKey.enabled === false ? "已停用" : "已启用"}
+                    </span>
+                  </div>
+                  <div class="agent-time" data-label="更新时间">
+                    ${escapeHtml(formatSessionTime(apiKey.updateTime || apiKey.createTime))}
+                  </div>
+                  <div class="agent-row-actions">
+                    <button
+                      class="icon-button"
+                      type="button"
+                      data-action="edit-api-key"
+                      data-api-key-id="${escapeHtml(apiKey.id)}"
+                      title="编辑"
+                      aria-label="编辑 API 密钥"
+                    >${svgIcon("pencil", 16)}</button>
+                    <button
+                      class="icon-button danger"
+                      type="button"
+                      data-action="delete-api-key"
+                      data-api-key-id="${escapeHtml(apiKey.id)}"
+                      title="删除"
+                      aria-label="删除 API 密钥"
+                    >${svgIcon("trash", 16)}</button>
+                  </div>
+                </article>
+              `;
+            })
+            .join("")}
+        </div>
+      </div>
+    </section>
+  `;
 }
 
 function renderAgentManager() {
@@ -793,7 +965,7 @@ function renderAgentManager() {
       <div class="agent-table-shell">
         <div class="agent-table agent-table-head" aria-hidden="true">
           <span>Agent</span>
-          <span>服务商</span>
+          <span>API 密钥</span>
           <span>模型</span>
           <span>工具</span>
           <span>更新时间</span>
@@ -802,10 +974,12 @@ function renderAgentManager() {
         <div class="agent-table-body">
           ${state.agents
             .map((agent) => {
+              const apiKey = apiKeyById(agent.apiKeyId);
               const searchText = [
                 agent.name,
                 agent.description,
-                agent.provider,
+                apiKey?.name,
+                apiKey?.provider,
                 agent.modelId,
                 ...(agent.tools || []),
               ]
@@ -827,8 +1001,17 @@ function renderAgentManager() {
                       <span>${escapeHtml(agent.description || "暂无描述")}</span>
                     </div>
                   </div>
-                  <div data-label="服务商">
-                    <span class="provider-pill">${escapeHtml(agent.provider || "未配置")}</span>
+                  <div class="agent-key-cell" data-label="API 密钥">
+                    ${
+                      apiKey
+                        ? `
+                          <span class="agent-key-copy">
+                            <strong>${escapeHtml(apiKeyDisplayName(apiKey))}</strong>
+                            <span>${escapeHtml(providerLabel(apiKey.provider))}</span>
+                          </span>
+                        `
+                        : '<span class="muted-text">未配置</span>'
+                    }
                   </div>
                   <div class="agent-model" data-label="模型">
                     ${escapeHtml(agent.modelId || "未配置")}
@@ -884,6 +1067,7 @@ function renderAgentManager() {
 function renderWorkspace() {
   const agent = activeAgent();
   const session = activeSession();
+  const agentApiKey = agent ? apiKeyById(agent.apiKeyId) : null;
   const sessionTokenLocked = isSessionTokenExhausted(session);
   const username = state.auth?.username || "admin";
 
@@ -923,6 +1107,14 @@ function renderWorkspace() {
             ${svgIcon("bot", 17)}
             <span>Agent 管理</span>
           </button>
+          <button
+            class="sidebar-nav-item ${state.view === "apiKeys" ? "active" : ""}"
+            type="button"
+            data-action="show-api-keys"
+          >
+            ${svgIcon("key", 17)}
+            <span>API 设置</span>
+          </button>
         </nav>
         ${
           state.view === "chat"
@@ -942,7 +1134,8 @@ function renderWorkspace() {
                 <div class="session-list">${renderSessions()}</div>
               </section>
             `
-            : `
+            : state.view === "agents"
+              ? `
               <section class="sidebar-section">
                 <div class="sidebar-section-header">
                   <span class="sidebar-section-title">Agent</span>
@@ -955,6 +1148,21 @@ function renderWorkspace() {
                   >${svgIcon("plus", 18)}</button>
                 </div>
                 <div class="session-list agent-quick-list">${renderAgentQuickList()}</div>
+              </section>
+            `
+              : `
+              <section class="sidebar-section">
+                <div class="sidebar-section-header">
+                  <span class="sidebar-section-title">API 密钥</span>
+                  <button
+                    class="icon-button"
+                    type="button"
+                    data-action="new-api-key"
+                    title="新增 API 密钥"
+                    aria-label="新增 API 密钥"
+                  >${svgIcon("plus", 18)}</button>
+                </div>
+                <div class="session-list agent-quick-list">${renderApiKeyQuickList()}</div>
               </section>
             `
         }
@@ -997,7 +1205,7 @@ function renderWorkspace() {
                   <div class="workspace-title">
                     <h1>${escapeHtml(session?.title || agent?.name || "AgentX")}</h1>
                     <p>
-                      <span>${escapeHtml(agent?.modelId || agent?.provider || "AI Workspace")}</span>
+                      <span>${escapeHtml(agent ? agent.modelId || agentApiKey?.name || "未配置模型" : "AI Workspace")}</span>
                       ${
                         session
                           ? `<span class="workspace-token-usage ${sessionTokenLocked ? "exhausted" : ""}">${escapeHtml(sessionTokenSummary(session))}</span>`
@@ -1006,10 +1214,17 @@ function renderWorkspace() {
                     </p>
                   </div>
                 `
-                : `
+                : state.view === "agents"
+                  ? `
                   <div class="workspace-title always-visible">
                     <h1>Agent 管理</h1>
                     <p>${state.agents.length} 个 Agent</p>
+                  </div>
+                `
+                  : `
+                  <div class="workspace-title always-visible">
+                    <h1>API 设置</h1>
+                    <p>${state.apiKeys.length} 个 API 密钥</p>
                   </div>
                 `
             }
@@ -1023,7 +1238,14 @@ function renderWorkspace() {
                     <span>新建 Agent</span>
                   </button>
                 `
-                : ""
+                : state.view === "apiKeys"
+                  ? `
+                    <button class="secondary-button header-create-button" type="button" data-action="new-api-key">
+                      ${svgIcon("plus", 16)}
+                      <span>新增密钥</span>
+                    </button>
+                  `
+                  : ""
             }
             <button
               class="icon-button"
@@ -1093,7 +1315,9 @@ function renderWorkspace() {
                 </div>
               </section>
             `
-            : renderAgentManager()
+            : state.view === "agents"
+              ? renderAgentManager()
+              : renderApiKeyManager()
         }
       </main>
     </div>
@@ -1115,11 +1339,15 @@ function renderAgentEditorModal() {
     description: agent?.description || "",
     systemPrompt: agent?.systemPrompt || "",
     welcomeMessage: agent?.welcomeMessage || "",
-    provider: agent?.provider || "openai",
+    apiKeyId:
+      agent?.apiKeyId ||
+      state.apiKeys.find((apiKey) => apiKey.enabled !== false)?.id ||
+      "",
     modelId: agent?.modelId || "",
   };
   const toolNames = Array.from(new Set(["weather", "file", ...(agent?.tools || [])]));
   const selectedTools = new Set(agent?.tools || []);
+  const enabledApiKeys = state.apiKeys.filter((apiKey) => apiKey.enabled !== false);
 
   return `
     <div class="modal-backdrop agent-editor-backdrop" data-modal-backdrop>
@@ -1157,10 +1385,21 @@ function renderAgentEditorModal() {
               <h3 class="agent-form-section-title">模型配置</h3>
               <div class="field-grid two-columns">
                 <div class="field">
-                  <label for="agent-provider">服务商</label>
-                  <select id="agent-provider" name="provider" required>
-                    <option value="openai" ${values.provider === "openai" ? "selected" : ""}>OpenAI</option>
-                    <option value="anthropic" ${values.provider === "anthropic" ? "selected" : ""}>Anthropic</option>
+                  <label for="agent-api-key">API 密钥</label>
+                  <select id="agent-api-key" name="apiKeyId" required ${enabledApiKeys.length ? "" : "disabled"}>
+                    ${
+                      enabledApiKeys.length
+                        ? enabledApiKeys
+                            .map(
+                              (apiKey) => `
+                                <option value="${escapeHtml(apiKey.id)}" ${apiKey.id === values.apiKeyId ? "selected" : ""}>
+                                  ${escapeHtml(apiKeyDisplayName(apiKey))} · ${escapeHtml(providerLabel(apiKey.provider))}
+                                </option>
+                              `,
+                            )
+                            .join("")
+                        : '<option value="">请先配置 API 密钥</option>'
+                    }
                   </select>
                 </div>
                 <div class="field">
@@ -1168,6 +1407,11 @@ function renderAgentEditorModal() {
                   <input id="agent-model" name="modelId" maxlength="120" value="${escapeHtml(values.modelId)}" placeholder="gpt-4o-mini" required />
                 </div>
               </div>
+              ${
+                enabledApiKeys.length
+                  ? ""
+                  : '<p class="form-hint">暂无启用中的 API 密钥，请先前往 API 设置添加。</p>'
+              }
             </section>
 
             <section class="agent-form-section">
@@ -1200,7 +1444,7 @@ function renderAgentEditorModal() {
           </div>
           <div class="modal-footer agent-editor-footer">
             <button class="ghost-button" type="button" data-action="close-modal">取消</button>
-            <button class="primary-button" type="submit" ${state.agentBusy ? "disabled" : ""}>
+            <button class="primary-button" type="submit" ${state.agentBusy || !enabledApiKeys.length ? "disabled" : ""}>
               ${state.agentBusy ? '<span class="button-spinner"></span>' : svgIcon("save", 16)}
               <span>${editing ? "保存" : "创建"}</span>
             </button>
@@ -1243,9 +1487,137 @@ function renderDeleteAgentModal() {
   `;
 }
 
+function renderApiKeyEditorModal() {
+  const apiKey =
+    state.modal?.apiKeyId
+      ? state.apiKeys.find((item) => item.id === state.modal.apiKeyId)
+      : null;
+  const editing = Boolean(apiKey);
+  const enabled = apiKey?.enabled !== false;
+
+  return `
+    <div class="modal-backdrop agent-editor-backdrop" data-modal-backdrop>
+      <section class="modal agent-editor-modal api-key-editor-modal" role="dialog" aria-modal="true" aria-labelledby="api-key-editor-title">
+        <div class="modal-header">
+          <div>
+            <h2 class="modal-title" id="api-key-editor-title">${editing ? "编辑 API 密钥" : "新增 API 密钥"}</h2>
+            <p class="modal-subtitle">${escapeHtml(apiKey?.id || "配置接口协议、访问凭据和请求地址")}</p>
+          </div>
+          <button class="icon-button" type="button" data-action="close-modal" aria-label="关闭">
+            ${svgIcon("x", 18)}
+          </button>
+        </div>
+        <form id="api-key-form" autocomplete="off">
+          <div class="modal-body agent-editor-body">
+            <section class="agent-form-section">
+              <h3 class="agent-form-section-title">密钥信息</h3>
+              <div class="field">
+                <label for="api-key-name">名称</label>
+                <input
+                  id="api-key-name"
+                  name="name"
+                  maxlength="128"
+                  value="${escapeHtml(apiKey?.name || "")}"
+                  placeholder="例如：DeepSeek 主账号"
+                  required
+                  autofocus
+                />
+              </div>
+              <div class="field">
+                <label for="api-key-provider">接口协议</label>
+                <select id="api-key-provider" name="provider" required>
+                  <option value="openai" ${apiKey?.provider === "openai" || !apiKey ? "selected" : ""}>OpenAI / OpenAI 兼容</option>
+                  <option value="anthropic" ${apiKey?.provider === "anthropic" ? "selected" : ""}>Anthropic</option>
+                </select>
+              </div>
+            </section>
+
+            <section class="agent-form-section">
+              <h3 class="agent-form-section-title">访问凭据</h3>
+              <div class="field">
+                <label for="api-key-secret">API Key</label>
+                <input
+                  id="api-key-secret"
+                  name="apiKey"
+                  type="password"
+                  maxlength="1000"
+                  placeholder="${editing ? `当前：${escapeHtml(apiKey?.apiKey || "****")}，留空则保留` : "请输入 API Key"}"
+                  autocomplete="new-password"
+                  ${editing ? "" : "required"}
+                />
+              </div>
+              <div class="field">
+                <label for="api-key-base-url">Base URL</label>
+                <input
+                  id="api-key-base-url"
+                  name="baseUrl"
+                  maxlength="500"
+                  value="${escapeHtml(apiKey?.baseUrl || "")}"
+                  placeholder="留空使用服务商默认地址"
+                />
+              </div>
+              <label class="toggle-field">
+                <input type="checkbox" name="enabled" ${enabled ? "checked" : ""} />
+                <span><strong>启用该密钥</strong></span>
+              </label>
+            </section>
+          </div>
+          <div class="modal-footer agent-editor-footer">
+            <button class="ghost-button" type="button" data-action="close-modal">取消</button>
+            <button class="primary-button" type="submit" ${state.apiKeyBusy ? "disabled" : ""}>
+              ${state.apiKeyBusy ? '<span class="button-spinner"></span>' : svgIcon("save", 16)}
+              <span>${editing ? "保存" : "新增"}</span>
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  `;
+}
+
+function renderDeleteApiKeyModal() {
+  const apiKey = state.apiKeys.find((item) => item.id === state.modal?.apiKeyId);
+  const usageCount = apiKey ? apiKeyUsageCount(apiKey.id) : 0;
+
+  return `
+    <div class="modal-backdrop" data-modal-backdrop>
+      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="delete-api-key-title">
+        <div class="modal-header">
+          <h2 class="modal-title" id="delete-api-key-title">删除 API 密钥</h2>
+          <button class="icon-button" type="button" data-action="close-modal" aria-label="关闭">
+            ${svgIcon("x", 18)}
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="modal-danger-mark">${svgIcon("trash", 19)}</div>
+          <p class="modal-copy">
+            密钥“${escapeHtml(apiKeyDisplayName(apiKey))}”（${escapeHtml(apiKey?.apiKey || "****")}）将被永久删除。
+            ${usageCount ? `当前有 ${usageCount} 个 Agent 正在使用，删除后这些 Agent 将无法发起对话。` : ""}
+          </p>
+        </div>
+        <div class="modal-footer">
+          <button class="ghost-button" type="button" data-action="close-modal">取消</button>
+          <button class="primary-button" type="button" data-action="confirm-delete-api-key" ${state.apiKeyBusy ? "disabled" : ""}>
+            ${svgIcon("trash", 16)}
+            <span>删除</span>
+          </button>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
 function renderModal() {
   if (!state.modal) {
     return "";
+  }
+
+  if (state.modal.type === "api-key-editor") {
+    return renderApiKeyEditorModal();
+  }
+
+  if (state.modal.type === "delete-api-key") {
+    return renderDeleteApiKeyModal();
   }
 
   if (state.modal.type === "agent-editor") {
@@ -1439,12 +1811,14 @@ async function refreshWorkspace({ render = true, quiet = false } = {}) {
   }
 
   try {
-    const [agents, sessions] = await Promise.all([
+    const [agents, sessions, apiKeys] = await Promise.all([
       apiRequest("/agent/list"),
       apiRequest("/session/list"),
+      apiRequest("/apikey/list"),
     ]);
 
     state.agents = Array.isArray(agents) ? agents : [];
+    state.apiKeys = Array.isArray(apiKeys) ? apiKeys : [];
     const agentIds = new Set(state.agents.map((agent) => agent.id));
     state.sessions = (Array.isArray(sessions) ? sessions : []).filter((session) =>
       agentIds.has(session.agentId),
@@ -1675,10 +2049,13 @@ async function saveAgent(form) {
       description: String(formData.get("description") || "").trim() || null,
       systemPrompt: String(formData.get("systemPrompt") || "").trim() || null,
       welcomeMessage: String(formData.get("welcomeMessage") || "").trim() || null,
-      provider: String(formData.get("provider") || "").trim(),
+      apiKeyId: String(formData.get("apiKeyId") || "").trim(),
       modelId: String(formData.get("modelId") || "").trim(),
       tools: formData.getAll("tools").map(String),
     };
+    if (!payload.apiKeyId) {
+      throw new ApiError("请选择 API 密钥");
+    }
   } catch (error) {
     showToast("error", "保存失败", error.message);
     return;
@@ -1707,6 +2084,13 @@ async function saveAgent(form) {
 
     persistSelection();
     showToast("success", editing ? "Agent 已更新" : "Agent 已创建");
+    if (!apiKeyById(saved.apiKeyId)) {
+      showToast(
+        "info",
+        "API 密钥未配置",
+        "请前往 API 设置添加密钥后再发起对话。",
+      );
+    }
     await refreshWorkspace({ render: false, quiet: true });
   } catch (error) {
     if (error.code === "401") {
@@ -1749,6 +2133,90 @@ async function deleteAgent(agentId) {
     showToast("error", "删除失败", error.message);
   } finally {
     state.agentBusy = false;
+    renderWorkspace();
+  }
+}
+
+async function saveApiKey(form) {
+  const formData = new FormData(form);
+  const apiKeyId = state.modal?.apiKeyId || "";
+  const editing = Boolean(apiKeyId);
+  const name = String(formData.get("name") || "").trim();
+  const apiKey = String(formData.get("apiKey") || "").trim();
+
+  if (!name) {
+    showToast("error", "保存失败", "密钥名称不能为空");
+    return;
+  }
+  if (!editing && !apiKey) {
+    showToast("error", "保存失败", "API Key 不能为空");
+    return;
+  }
+
+  const payload = {
+    name,
+    provider: String(formData.get("provider") || "").trim(),
+    baseUrl: String(formData.get("baseUrl") || "").trim() || null,
+    enabled: formData.get("enabled") === "on",
+  };
+  if (apiKey) {
+    payload.apiKey = apiKey;
+  }
+  if (editing) {
+    payload.id = apiKeyId;
+  }
+
+  state.apiKeyBusy = true;
+  state.modal = null;
+  renderWorkspace();
+
+  try {
+    const saved = await apiRequest(editing ? "/apikey/update" : "/apikey/create", {
+      method: "POST",
+      body: payload,
+    });
+
+    state.apiKeys = editing
+      ? state.apiKeys.map((item) => (item.id === saved.id ? saved : item))
+      : [saved, ...state.apiKeys.filter((item) => item.id !== saved.id)];
+    showToast("success", editing ? "API 密钥已更新" : "API 密钥已新增");
+    await refreshWorkspace({ render: false, quiet: true });
+  } catch (error) {
+    if (error.code === "401") {
+      clearAuth();
+      renderLogin(error.message);
+      return;
+    }
+    showToast("error", editing ? "更新失败" : "新增失败", error.message);
+  } finally {
+    state.apiKeyBusy = false;
+    renderWorkspace();
+  }
+}
+
+async function deleteApiKey(apiKeyId) {
+  const apiKey = state.apiKeys.find((item) => item.id === apiKeyId);
+  const usageCount = apiKey ? apiKeyUsageCount(apiKey.id) : 0;
+  state.apiKeyBusy = true;
+  state.modal = null;
+  renderWorkspace();
+
+  try {
+    await apiRequest(`/apikey/delete?id=${encodeURIComponent(apiKeyId)}`, { method: "POST" });
+    state.apiKeys = state.apiKeys.filter((item) => item.id !== apiKeyId);
+    showToast("success", "API 密钥已删除");
+    if (usageCount) {
+      showToast("info", "关联 Agent 需要重新配置", `${usageCount} 个 Agent 当前绑定的密钥已不存在。`);
+    }
+  } catch (error) {
+    if (error.code === "401") {
+      clearAuth();
+      renderLogin(error.message);
+      return;
+    }
+    showToast("error", "删除失败", error.message);
+  } finally {
+    state.apiKeyBusy = false;
     renderWorkspace();
   }
 }
@@ -1978,7 +2446,7 @@ async function handleLogin(form) {
 }
 
 function switchView(view) {
-  state.view = view === "agents" ? "agents" : "chat";
+  state.view = view === "agents" || view === "apiKeys" ? view : "chat";
   state.sidebarOpen = false;
   renderWorkspace();
 }
@@ -1995,6 +2463,22 @@ function openDeleteAgentModal(agentId) {
   state.modal = {
     type: "delete-agent",
     agentId,
+  };
+  renderWorkspace();
+}
+
+function openApiKeyEditor(apiKeyId = "") {
+  state.modal = {
+    type: "api-key-editor",
+    apiKeyId: apiKeyId || "",
+  };
+  renderWorkspace();
+}
+
+function openDeleteApiKeyModal(apiKeyId) {
+  state.modal = {
+    type: "delete-api-key",
+    apiKeyId,
   };
   renderWorkspace();
 }
@@ -2078,6 +2562,12 @@ app.addEventListener("submit", async (event) => {
     return;
   }
 
+  if (form.id === "api-key-form") {
+    event.preventDefault();
+    await saveApiKey(form);
+    return;
+  }
+
   if (form.id === "composer-form") {
     event.preventDefault();
     const formData = new FormData(form);
@@ -2099,6 +2589,7 @@ app.addEventListener("click", async (event) => {
   const action = button.dataset.action;
   const sessionId = button.dataset.sessionId;
   const agentId = button.dataset.agentId;
+  const apiKeyId = button.dataset.apiKeyId;
 
   if (action === "select-session") {
     await selectSession(sessionId);
@@ -2114,6 +2605,8 @@ app.addEventListener("click", async (event) => {
     switchView("chat");
   } else if (action === "show-agents") {
     switchView("agents");
+  } else if (action === "show-api-keys") {
+    switchView("apiKeys");
   } else if (action === "new-agent") {
     openAgentEditor();
   } else if (action === "edit-agent") {
@@ -2124,6 +2617,14 @@ app.addEventListener("click", async (event) => {
     await deleteAgent(agentId || state.modal?.agentId);
   } else if (action === "chat-agent") {
     await chatWithAgent(agentId);
+  } else if (action === "new-api-key") {
+    openApiKeyEditor();
+  } else if (action === "edit-api-key") {
+    openApiKeyEditor(apiKeyId);
+  } else if (action === "delete-api-key") {
+    openDeleteApiKeyModal(apiKeyId);
+  } else if (action === "confirm-delete-api-key") {
+    await deleteApiKey(apiKeyId || state.modal?.apiKeyId);
   } else if (action === "stop-generation") {
     stopGeneration();
   } else if (action === "close-modal") {

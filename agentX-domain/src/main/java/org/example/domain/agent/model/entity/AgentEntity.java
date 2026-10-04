@@ -31,8 +31,8 @@ public class AgentEntity {
     /** 欢迎消息 */
     private String welcomeMessage;
 
-    /** 服务商 openai/anthropic */
-    private String provider;
+    /** 绑定的API密钥ID */
+    private String apiKeyId;
 
     /** 模型ID */
     private String modelId;
@@ -62,7 +62,7 @@ public class AgentEntity {
      */
     public static AgentEntity createNew(String name, String avatar, String description,
                                         String systemPrompt, String welcomeMessage, String userId,
-                                        String provider, String modelId,
+                                        String apiKeyId, String modelId,
                                         java.util.List<String> tools) {
         AgentEntity agent = new AgentEntity();
         agent.setId(UUID.randomUUID().toString().replace("-", ""));
@@ -71,7 +71,7 @@ public class AgentEntity {
         agent.setDescription(description);
         agent.setSystemPrompt(systemPrompt);
         agent.setWelcomeMessage(welcomeMessage);
-        agent.setProvider(provider);
+        agent.setApiKeyId(apiKeyId);
         agent.setModelId(modelId);
         agent.setTools(tools);
         agent.setEnabled(true);
@@ -87,6 +87,9 @@ public class AgentEntity {
     public void validate() {
         if (name == null || name.trim().isEmpty()) {
             throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "智能体名称不能为空");
+        }
+        if (apiKeyId == null || apiKeyId.trim().isEmpty()) {
+            throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "API密钥不能为空");
         }
     }
 }

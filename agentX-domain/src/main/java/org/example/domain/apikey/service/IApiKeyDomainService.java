@@ -34,8 +34,4 @@ public interface IApiKeyDomainService {
      */
     List<ApiKeyEntity> listApiKeys(String userId);
 
-    /**
-     * 根据用户ID和服务商查询启用的密钥（供对话模块调用）
-     */
-    ApiKeyEntity getApiKeyByProvider(String userId, String provider);
 }

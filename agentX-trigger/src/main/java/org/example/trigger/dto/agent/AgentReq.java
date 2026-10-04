@@ -32,8 +32,9 @@ public class AgentReq {
     /** 欢迎消息 */
     private String welcomeMessage;
 
-    /** 服务商 openai/anthropic */
-    private String provider;
+    /** 绑定的API密钥ID */
+    @NotBlank(message = "API密钥不能为空")
+    private String apiKeyId;
 
     /** 模型ID */
     private String modelId;

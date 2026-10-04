@@ -20,7 +20,7 @@ public class AgentAssembler {
                 req.getSystemPrompt(),
                 req.getWelcomeMessage(),
                 userId,
-                req.getProvider(),
+                req.getApiKeyId(),
                 req.getModelId(),
                 req.getTools());
     }
@@ -34,7 +34,7 @@ public class AgentAssembler {
         agent.setDescription(req.getDescription());
         agent.setSystemPrompt(req.getSystemPrompt());
         agent.setWelcomeMessage(req.getWelcomeMessage());
-        agent.setProvider(req.getProvider());
+        agent.setApiKeyId(req.getApiKeyId());
         agent.setModelId(req.getModelId());
         agent.setTools(req.getTools());
         return agent;
@@ -49,7 +49,7 @@ public class AgentAssembler {
         res.setDescription(entity.getDescription());
         res.setSystemPrompt(entity.getSystemPrompt());
         res.setWelcomeMessage(entity.getWelcomeMessage());
-        res.setProvider(entity.getProvider());
+        res.setApiKeyId(entity.getApiKeyId());
         res.setModelId(entity.getModelId());
         res.setTools(entity.getTools());
         res.setEnabled(entity.getEnabled());

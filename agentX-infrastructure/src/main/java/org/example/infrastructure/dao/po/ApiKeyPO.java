@@ -16,7 +16,10 @@ public class ApiKeyPO {
     /** 所属用户ID */
     private String userId;
 
-    /** 服务商 openai/anthropic */
+    /** 密钥名称 */
+    private String name;
+
+    /** 接口协议 openai/anthropic */
     private String provider;
 
     /** API密钥 */

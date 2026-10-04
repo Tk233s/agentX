@@ -34,8 +34,4 @@ public interface ApiKeyRepository {
      */
     List<ApiKeyEntity> queryByUserId(String userId);
 
-    /**
-     * 根据用户ID和服务商查询启用的密钥
-     */
-    ApiKeyEntity findByUserIdAndProvider(String userId, String provider);
 }

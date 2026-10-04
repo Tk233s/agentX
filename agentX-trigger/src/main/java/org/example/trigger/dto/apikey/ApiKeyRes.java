@@ -14,7 +14,10 @@ public class ApiKeyRes {
     /** 主键ID */
     private String id;
 
-    /** 服务商 */
+    /** 密钥名称 */
+    private String name;
+
+    /** 接口协议 */
     private String provider;
 
     /** API密钥（脱敏：sk-****xxxx） */

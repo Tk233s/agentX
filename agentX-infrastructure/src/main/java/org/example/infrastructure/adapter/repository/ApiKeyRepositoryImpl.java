@@ -50,16 +50,12 @@ public class ApiKeyRepositoryImpl implements ApiKeyRepository {
         return pos.stream().map(this::toEntity).collect(Collectors.toList());
     }
 
-    @Override
-    public ApiKeyEntity findByUserIdAndProvider(String userId, String provider) {
-        return toEntity(apiKeyDao.queryByUserIdAndProvider(userId, provider));
-    }
-
     /** Entity -> PO */
     private ApiKeyPO toPO(ApiKeyEntity entity) {
         ApiKeyPO po = new ApiKeyPO();
         po.setId(entity.getId());
         po.setUserId(entity.getUserId());
+        po.setName(entity.getName());
         po.setProvider(entity.getProvider());
         po.setApiKey(entity.getApiKey());
         po.setBaseUrl(entity.getBaseUrl());
@@ -77,6 +73,7 @@ public class ApiKeyRepositoryImpl implements ApiKeyRepository {
         ApiKeyEntity entity = new ApiKeyEntity();
         entity.setId(po.getId());
         entity.setUserId(po.getUserId());
+        entity.setName(po.getName());
         entity.setProvider(po.getProvider());
         entity.setApiKey(po.getApiKey());
         entity.setBaseUrl(po.getBaseUrl());

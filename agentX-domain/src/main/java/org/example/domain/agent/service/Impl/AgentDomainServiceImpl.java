@@ -3,6 +3,8 @@ package org.example.domain.agent.service.Impl;
 import org.example.domain.agent.adapter.repository.AgentRepository;
 import org.example.domain.agent.model.entity.AgentEntity;
 import org.example.domain.agent.service.IAgentDomainService;
+import org.example.domain.apikey.model.entity.ApiKeyEntity;
+import org.example.domain.apikey.service.IApiKeyDomainService;
 import org.example.types.enums.ResponseCode;
 import org.example.types.exception.AppException;
 import org.springframework.stereotype.Service;
@@ -21,6 +23,9 @@ public class AgentDomainServiceImpl implements IAgentDomainService {
     @Resource
     private AgentRepository agentRepository;
 
+    @Resource
+    private IApiKeyDomainService apiKeyDomainService;
+
     /**
      * 创建智能体
      * @param agent 待创建的智能体实体
@@ -30,7 +35,9 @@ public class AgentDomainServiceImpl implements IAgentDomainService {
     public AgentEntity createAgent(AgentEntity agent) {
         // 1. 业务规则校验
         agent.validate();
-        // 2. 落库
+        // 2. 校验密钥存在、归属当前用户且已启用
+        validateApiKey(agent.getApiKeyId(), agent.getUserId());
+        // 3. 落库
         agentRepository.save(agent);
         return agent;
     }
@@ -42,16 +49,18 @@ public class AgentDomainServiceImpl implements IAgentDomainService {
      */
     @Transactional
     public AgentEntity updateAgent(AgentEntity agent, String userId) {
-        // 1. 业务字段校验（id 必填由 trigger 层分组校验保证）
-        agent.validate();
-        // 2. 存在性与归属校验
+        // 1. 存在性与归属校验
         AgentEntity existing = requireOwnedAgent(agent.getId(), userId);
-        // 3. 保留入参不可覆盖的字段，并刷新更新时间
+        // 2. 业务字段校验（id 必填由 trigger 层分组校验保证）
+        agent.validate();
+        // 3. 校验密钥存在、归属当前用户且已启用
+        validateApiKey(agent.getApiKeyId(), userId);
+        // 4. 保留入参不可覆盖的字段，并刷新更新时间
         agent.setUserId(existing.getUserId());
         agent.setEnabled(existing.getEnabled());
         agent.setCreatedAt(existing.getCreatedAt());
         agent.setUpdatedAt(LocalDateTime.now());
-        // 4. 落库更新
+        // 5. 落库更新
         agentRepository.update(agent);
         return agent;
     }
@@ -106,6 +115,16 @@ public class AgentDomainServiceImpl implements IAgentDomainService {
     private void checkOwner(AgentEntity agent, String userId) {
         if (userId == null || !userId.equals(agent.getUserId())) {
             throw new AppException(ResponseCode.FORBIDDEN.getCode(), "无权访问该智能体");
+        }
+    }
+
+    private void validateApiKey(String apiKeyId, String userId) {
+        ApiKeyEntity apiKey = apiKeyDomainService.getApiKey(apiKeyId, userId);
+        if (apiKey == null) {
+            throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "API密钥不存在");
+        }
+        if (Boolean.FALSE.equals(apiKey.getEnabled())) {
+            throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "API密钥已停用");
         }
     }
 }
