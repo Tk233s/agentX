@@ -909,6 +909,13 @@ textarea:disabled {
   animation: streaming-cursor-blink 0.72s steps(2, start) infinite;
 }
 
+.message-delivery-error {
+  margin-top: 6px;
+  color: #b42318;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 @keyframes streaming-cursor-blink {
   50% {
     opacity: 0;

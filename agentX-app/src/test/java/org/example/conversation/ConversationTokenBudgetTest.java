@@ -12,6 +12,7 @@ import org.example.domain.conversation.model.entity.LLMResult;
 import org.example.domain.conversation.model.entity.LLMStreamChunk;
 import org.example.domain.conversation.model.valobj.TokenUsage;
 import org.example.domain.conversation.service.Impl.ConversationServiceImpl;
+import org.example.domain.message.model.entity.MessageEntity;
 import org.example.domain.message.service.IMessageDomainService;
 import org.example.domain.session.model.entity.SessionEntity;
 import org.example.domain.session.model.valobj.SessionTokenBudget;
@@ -19,6 +20,7 @@ import org.example.domain.session.service.ISessionDomainService;
 import org.example.types.enums.ResponseCode;
 import org.example.types.exception.AppException;
 import org.junit.Test;
+import org.mockito.InOrder;
 import org.springframework.test.util.ReflectionTestUtils;
 import reactor.core.publisher.Flux;
 
@@ -29,6 +31,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -65,7 +68,31 @@ public class ConversationTokenBudgetTest {
         assertEquals(ConversationStreamEvent.EventType.DONE, done.type());
         assertEquals(Long.valueOf(105L), done.usedTokens());
         assertTrue(done.limitReached());
+        InOrder persistOrder = inOrder(fixture.messageDomainService);
+        persistOrder.verify(fixture.messageDomainService)
+                .saveUserMessage(fixture.sessionId, "hello");
+        persistOrder.verify(fixture.messageDomainService)
+                .saveAssistantMessage(any(MessageEntity.class));
         verify(fixture.sessionDomainService).addUsedTokens(fixture.sessionId, fixture.userId, 10L);
+    }
+
+    @Test
+    public void streamFailureBeforeFirstChunkKeepsUserMessage() {
+        Fixture fixture = fixture(0L, null);
+        when(fixture.llmPort.stream(any(LLMEntity.class)))
+                .thenReturn(Flux.error(new IllegalStateException("provider failed")));
+
+        try {
+            fixture.service.streamConversation(fixture.sessionId, fixture.userId, "hello")
+                    .collectList()
+                    .block();
+            fail("Expected stream failure");
+        } catch (IllegalStateException e) {
+            assertEquals("provider failed", e.getMessage());
+        }
+
+        verify(fixture.messageDomainService).saveUserMessage(fixture.sessionId, "hello");
+        verify(fixture.messageDomainService, never()).saveAssistantMessage(any(MessageEntity.class));
     }
 
     @Test

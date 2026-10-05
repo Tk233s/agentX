@@ -16,7 +16,12 @@
                model, provider, finish_reason, latency_ms, usage_source, created_at
         FROM message
         WHERE session_id = #{sessionId}
-        ORDER BY created_at ASC
+        ORDER BY created_at ASC,
+                 CASE role
+                     WHEN 'user' THEN 0
+                     WHEN 'assistant' THEN 1
+                     ELSE 2
+                 END ASC
     </select>
 
     <delete id="deleteBySessionId" parameterType="java.lang.String">

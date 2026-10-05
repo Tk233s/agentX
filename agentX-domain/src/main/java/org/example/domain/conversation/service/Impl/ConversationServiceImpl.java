@@ -285,11 +285,12 @@ public class ConversationServiceImpl implements IConversationService {
                     "Agent绑定的API密钥已停用");
         }
 
-        // 4. 存用户消息到 message 表
+        // 4. 先保存当前用户消息。即使后续模型调用失败，用户也能在历史中看到自己发送的内容。
         messageDomainService.saveUserMessage(sessionId, content);
 
-        // 5. 查历史消息（包含刚存的用户消息）
-        List<MessageEntity> messages = messageDomainService.listMessages(sessionId, userId);
+        // 5. 查历史消息（包含刚保存的当前用户消息）
+        List<MessageEntity> messages = new ArrayList<>(
+                messageDomainService.listMessages(sessionId, userId));
 
         // 6. 组装 LLMEntity（含工具装填：从 Agent 配置取工具名列表传给基础设施层）
         LLMEntity llmEntity = LLMEntity.builder()

@@ -590,11 +590,14 @@ function renderMessage(message, pending = false) {
     ? message.content
       ? `${escapeHtml(message.content)}<span class="streaming-cursor" aria-hidden="true"></span>`
       : '<span class="typing-dots" aria-label="正在生成回复"><span></span><span></span><span></span></span>'
-    : escapeHtml(message.content);
+      : escapeHtml(message.content);
   const stats = isUser ? "" : renderMessageStats(message);
+  const deliveryError = isUser && message.failed
+    ? '<div class="message-delivery-error">发送失败，请重试</div>'
+    : "";
 
   return `
-    <article class="message-row ${isUser ? "user" : "assistant"} ${pending ? "pending" : ""}">
+    <article class="message-row ${isUser ? "user" : "assistant"} ${pending ? "pending" : ""} ${message.failed ? "failed" : ""}">
       <div class="message-avatar">
         ${isUser ? svgIcon("user", 16) : svgIcon("bot", 17)}
       </div>
@@ -604,6 +607,7 @@ function renderMessage(message, pending = false) {
           <span>${escapeHtml(formatMessageTime(message.createTime))}</span>
         </div>
         <div class="message-bubble">${content}</div>
+        ${deliveryError}
         ${stats}
       </div>
     </article>
@@ -642,6 +646,8 @@ function renderMessageStats(message) {
     items.push({ text: "已停止" });
   } else if (message.finishReason === "error") {
     items.push({ text: "生成失败" });
+  } else if (message.finishReason === "length") {
+    items.push({ text: "达到输出上限" });
   }
 
   if (!items.length) {
@@ -2363,6 +2369,9 @@ async function sendMessage(content) {
             if (payload.limitReached) {
               showToast("info", "Token 额度已用完", "本次回答已完成，该会话后续消息将无法发送。");
             }
+            if (payload.finishReason === "length") {
+              showToast("info", "回答已达到输出上限", "内容被服务端截断，可以要求模型继续接着写。");
+            }
           }
           return;
         }
@@ -2391,10 +2400,26 @@ async function sendMessage(content) {
     } else {
       showToast("error", "发送失败", error.message);
     }
+    let loaded = false;
     try {
       await loadMessages(session.id, { render: false });
+      loaded = true;
     } catch {
-      state.messages = state.messages.filter((message) => message.id !== optimisticMessage.id);
+      // 后端不可用时也要保留用户刚发的内容，避免消息无提示消失。
+    }
+    const persistedUserMessage = state.messages.some(
+      (message) => message.role === "user" && message.content === text,
+    );
+    if (!loaded || !persistedUserMessage) {
+      const failedMessage = { ...optimisticMessage, failed: true };
+      const hasOptimisticMessage = state.messages.some(
+        (message) => message.id === optimisticMessage.id,
+      );
+      state.messages = hasOptimisticMessage
+        ? state.messages.map((message) =>
+            message.id === optimisticMessage.id ? failedMessage : message,
+          )
+        : [...state.messages, failedMessage];
     }
   } finally {
     if (state.streamAbortController === streamController) {

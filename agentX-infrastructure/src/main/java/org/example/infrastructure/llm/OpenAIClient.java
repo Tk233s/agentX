@@ -29,6 +29,8 @@ import java.util.List;
 @Component
 public class OpenAIClient implements LLMPort {
 
+    private static final int DEFAULT_MAX_TOKENS = 8192;
+
     private final ToolRegistry toolRegistry;
 
     public OpenAIClient(ToolRegistry toolRegistry) {
@@ -112,7 +114,7 @@ public class OpenAIClient implements LLMPort {
         // Step 2: 构建 OpenAiChatOptions（模型调用参数层）
         OpenAiChatOptions options = OpenAiChatOptions.builder()
                 .model(model)
-                .maxTokens(maxTokens != null ? maxTokens : 2048)
+                .maxTokens(maxTokens != null ? maxTokens : DEFAULT_MAX_TOKENS)
                 .streamUsage(true)
                 .build();
 

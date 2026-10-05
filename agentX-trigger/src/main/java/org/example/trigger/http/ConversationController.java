@@ -7,6 +7,7 @@ import org.example.domain.conversation.model.entity.ConversationStreamEvent;
 import org.example.domain.conversation.service.IConversationService;
 import org.example.trigger.dto.conversation.ConversationReq;
 import org.example.types.context.UserContext;
+import org.example.types.exception.AppException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
@@ -49,12 +50,12 @@ public class ConversationController {
     public Flux<ServerSentEvent<String>> stream(@RequestBody @Validated ConversationReq req) {
         String userId = UserContext.requireCurrentUserId();
 
-        return conversationService.streamConversation(req.getSessionId(), userId, req.getContent())
+        return Flux.defer(() -> conversationService.streamConversation(
+                        req.getSessionId(),
+                        userId,
+                        req.getContent()))
                 .map(this::toServerSentEvent)
-                .onErrorResume(error -> Flux.just(ServerSentEvent.<String>builder()
-                        .event("error")
-                        .data(error.getMessage() == null ? "流式对话失败" : error.getMessage())
-                        .build()));
+                .onErrorResume(error -> Flux.just(toErrorEvent(error)));
     }
 
     private ServerSentEvent<String> toServerSentEvent(ConversationStreamEvent event) {
@@ -77,5 +78,18 @@ public class ConversationController {
         } catch (JsonProcessingException e) {
             return "{}";
         }
+    }
+
+    private ServerSentEvent<String> toErrorEvent(Throwable error) {
+        String message = error instanceof AppException appException
+                ? appException.getInfo()
+                : error.getMessage();
+        if (message == null || message.isBlank()) {
+            message = "流式对话失败";
+        }
+        return ServerSentEvent.<String>builder()
+                .event("error")
+                .data(message)
+                .build();
     }
 }
