@@ -1,6 +1,7 @@
 package org.example.domain.session.model.entity;
 
 import lombok.Data;
+import org.example.domain.session.model.valobj.SessionMemory;
 import org.example.domain.session.model.valobj.SessionTokenBudget;
 import org.example.types.enums.ResponseCode;
 import org.example.types.exception.AppException;
@@ -32,6 +33,15 @@ public class SessionEntity {
     /** 会话累计已使用Token */
     private Long usedTokens;
 
+    /** 较早对话的压缩摘要 */
+    private String contextSummary;
+
+    /** 摘要已经覆盖到的最后一条消息ID */
+    private String summaryThroughMessageId;
+
+    /** 摘要最后更新时间 */
+    private LocalDateTime summaryUpdatedAt;
+
     /** 创建时间 */
     private LocalDateTime createdAt;
 
@@ -59,5 +69,16 @@ public class SessionEntity {
 
     public SessionTokenBudget tokenBudget() {
         return SessionTokenBudget.of(tokenLimit, usedTokens);
+    }
+
+    public SessionMemory memory() {
+        return new SessionMemory(contextSummary, summaryThroughMessageId, summaryUpdatedAt);
+    }
+
+    public void updateMemory(SessionMemory memory) {
+        SessionMemory target = memory == null ? SessionMemory.empty() : memory;
+        this.contextSummary = target.summary();
+        this.summaryThroughMessageId = target.summarizedThroughMessageId();
+        this.summaryUpdatedAt = target.updatedAt();
     }
 }

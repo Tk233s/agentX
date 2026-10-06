@@ -5,6 +5,7 @@ import org.example.domain.agent.service.IAgentDomainService;
 import org.example.domain.apikey.model.entity.ApiKeyEntity;
 import org.example.domain.apikey.service.IApiKeyDomainService;
 import org.example.domain.conversation.adapter.port.ContextWindowPort;
+import org.example.domain.conversation.adapter.port.ContextSummaryPolicyPort;
 import org.example.domain.conversation.adapter.port.LLMPort;
 import org.example.domain.conversation.adapter.port.TokenEstimatorPort;
 import org.example.domain.conversation.model.entity.ConversationStreamEvent;
@@ -12,6 +13,7 @@ import org.example.domain.conversation.model.entity.LLMEntity;
 import org.example.domain.conversation.model.entity.LLMResult;
 import org.example.domain.conversation.model.entity.LLMStreamChunk;
 import org.example.domain.conversation.model.valobj.ContextWindow;
+import org.example.domain.conversation.model.valobj.ContextSummaryPolicy;
 import org.example.domain.conversation.model.valobj.TokenUsage;
 import org.example.domain.conversation.service.Impl.ConversationServiceImpl;
 import org.example.domain.message.model.entity.MessageEntity;
@@ -120,6 +122,7 @@ public class ConversationTokenBudgetTest {
         LLMPort llmPort = mock(LLMPort.class);
         TokenEstimatorPort tokenEstimatorPort = mock(TokenEstimatorPort.class);
         ContextWindowPort contextWindowPort = mock(ContextWindowPort.class);
+        ContextSummaryPolicyPort contextSummaryPolicyPort = mock(ContextSummaryPolicyPort.class);
 
         String sessionId = "session-1";
         String userId = "user-1";
@@ -152,6 +155,7 @@ public class ConversationTokenBudgetTest {
         when(messageDomainService.listMessages(sessionId, userId)).thenReturn(Collections.emptyList());
         when(contextWindowPort.getContextWindow("test-model"))
                 .thenReturn(new ContextWindow(131_072, 8_192));
+        when(contextSummaryPolicyPort.getPolicy()).thenReturn(ContextSummaryPolicy.disabled());
 
         ConversationServiceImpl service = new ConversationServiceImpl();
         ReflectionTestUtils.setField(service, "sessionDomainService", sessionDomainService);
@@ -161,6 +165,7 @@ public class ConversationTokenBudgetTest {
         ReflectionTestUtils.setField(service, "llmPort", llmPort);
         ReflectionTestUtils.setField(service, "tokenEstimatorPort", tokenEstimatorPort);
         ReflectionTestUtils.setField(service, "contextWindowPort", contextWindowPort);
+        ReflectionTestUtils.setField(service, "contextSummaryPolicyPort", contextSummaryPolicyPort);
 
         return new Fixture(
                 service,

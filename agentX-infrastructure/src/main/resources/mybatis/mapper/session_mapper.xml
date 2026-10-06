@@ -4,9 +4,13 @@
 
     <insert id="insert" parameterType="org.example.infrastructure.dao.po.SessionPO">
         INSERT INTO session
-            (id, title, agent_id, user_id, token_limit, used_tokens, created_at, updated_at)
+            (id, title, agent_id, user_id, token_limit, used_tokens,
+             context_summary, summary_through_message_id, summary_updated_at,
+             created_at, updated_at)
         VALUES
-            (#{id}, #{title}, #{agentId}, #{userId}, #{tokenLimit}, #{usedTokens}, #{createdAt}, #{updatedAt})
+            (#{id}, #{title}, #{agentId}, #{userId}, #{tokenLimit}, #{usedTokens},
+             #{contextSummary}, #{summaryThroughMessageId}, #{summaryUpdatedAt},
+             #{createdAt}, #{updatedAt})
     </insert>
 
     <update id="update" parameterType="org.example.infrastructure.dao.po.SessionPO">
@@ -27,14 +31,27 @@
         WHERE id = #{id}
     </update>
 
+    <update id="updateMemory">
+        UPDATE session
+        SET context_summary = #{summary},
+            summary_through_message_id = #{summarizedThroughMessageId},
+            summary_updated_at = #{updatedAt}
+        WHERE id = #{id}
+          AND summary_through_message_id &lt;=&gt; #{expectedThroughMessageId}
+    </update>
+
     <select id="queryById" parameterType="java.lang.String" resultType="org.example.infrastructure.dao.po.SessionPO">
-        SELECT id, title, agent_id, user_id, token_limit, used_tokens, created_at, updated_at
+        SELECT id, title, agent_id, user_id, token_limit, used_tokens,
+               context_summary, summary_through_message_id, summary_updated_at,
+               created_at, updated_at
         FROM session
         WHERE id = #{id}
     </select>
 
     <select id="queryByUserId" parameterType="java.lang.String" resultType="org.example.infrastructure.dao.po.SessionPO">
-        SELECT id, title, agent_id, user_id, token_limit, used_tokens, created_at, updated_at
+        SELECT id, title, agent_id, user_id, token_limit, used_tokens,
+               context_summary, summary_through_message_id, summary_updated_at,
+               created_at, updated_at
         FROM session
         WHERE user_id = #{userId}
         ORDER BY updated_at DESC

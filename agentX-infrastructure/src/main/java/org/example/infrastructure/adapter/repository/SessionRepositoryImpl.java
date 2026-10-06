@@ -2,6 +2,7 @@ package org.example.infrastructure.adapter.repository;
 
 import org.example.domain.session.adapter.repository.SessionRepository;
 import org.example.domain.session.model.entity.SessionEntity;
+import org.example.domain.session.model.valobj.SessionMemory;
 import org.example.infrastructure.dao.ISessionDao;
 import org.example.infrastructure.dao.po.SessionPO;
 import org.springframework.stereotype.Repository;
@@ -54,6 +55,17 @@ public class SessionRepositoryImpl implements SessionRepository {
         return sessionDao.incrementUsedTokens(id, tokens);
     }
 
+    @Override
+    public int updateMemory(String id, String expectedThroughMessageId, SessionMemory memory) {
+        SessionMemory target = memory == null ? SessionMemory.empty() : memory;
+        return sessionDao.updateMemory(
+                id,
+                expectedThroughMessageId,
+                target.summary(),
+                target.summarizedThroughMessageId(),
+                target.updatedAt());
+    }
+
     private SessionPO toPO(SessionEntity entity) {
         SessionPO po = new SessionPO();
         po.setId(entity.getId());
@@ -62,6 +74,9 @@ public class SessionRepositoryImpl implements SessionRepository {
         po.setUserId(entity.getUserId());
         po.setTokenLimit(entity.getTokenLimit());
         po.setUsedTokens(entity.getUsedTokens());
+        po.setContextSummary(entity.getContextSummary());
+        po.setSummaryThroughMessageId(entity.getSummaryThroughMessageId());
+        po.setSummaryUpdatedAt(entity.getSummaryUpdatedAt());
         po.setCreatedAt(entity.getCreatedAt());
         po.setUpdatedAt(entity.getUpdatedAt());
         return po;
@@ -78,6 +93,9 @@ public class SessionRepositoryImpl implements SessionRepository {
         entity.setUserId(po.getUserId());
         entity.setTokenLimit(po.getTokenLimit());
         entity.setUsedTokens(po.getUsedTokens());
+        entity.setContextSummary(po.getContextSummary());
+        entity.setSummaryThroughMessageId(po.getSummaryThroughMessageId());
+        entity.setSummaryUpdatedAt(po.getSummaryUpdatedAt());
         entity.setCreatedAt(po.getCreatedAt());
         entity.setUpdatedAt(po.getUpdatedAt());
         return entity;

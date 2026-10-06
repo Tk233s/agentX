@@ -4,6 +4,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.example.infrastructure.dao.po.SessionPO;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -23,4 +24,11 @@ public interface ISessionDao {
     List<SessionPO> queryByUserId(String userId);
 
     int incrementUsedTokens(@Param("id") String id, @Param("tokens") long tokens);
+
+    int updateMemory(
+            @Param("id") String id,
+            @Param("expectedThroughMessageId") String expectedThroughMessageId,
+            @Param("summary") String summary,
+            @Param("summarizedThroughMessageId") String summarizedThroughMessageId,
+            @Param("updatedAt") LocalDateTime updatedAt);
 }

@@ -5,11 +5,13 @@ import org.example.domain.agent.service.IAgentDomainService;
 import org.example.domain.apikey.model.entity.ApiKeyEntity;
 import org.example.domain.apikey.service.IApiKeyDomainService;
 import org.example.domain.conversation.adapter.port.ContextWindowPort;
+import org.example.domain.conversation.adapter.port.ContextSummaryPolicyPort;
 import org.example.domain.conversation.adapter.port.LLMPort;
 import org.example.domain.conversation.adapter.port.TokenEstimatorPort;
 import org.example.domain.conversation.model.entity.LLMEntity;
 import org.example.domain.conversation.model.entity.LLMResult;
 import org.example.domain.conversation.model.valobj.ContextWindow;
+import org.example.domain.conversation.model.valobj.ContextSummaryPolicy;
 import org.example.domain.conversation.model.valobj.TokenUsage;
 import org.example.domain.conversation.service.Impl.ConversationServiceImpl;
 import org.example.domain.message.model.entity.MessageEntity;
@@ -100,6 +102,7 @@ public class ConversationContextWindowTest {
         LLMPort llmPort = mock(LLMPort.class);
         TokenEstimatorPort tokenEstimatorPort = mock(TokenEstimatorPort.class);
         ContextWindowPort contextWindowPort = mock(ContextWindowPort.class);
+        ContextSummaryPolicyPort contextSummaryPolicyPort = mock(ContextSummaryPolicyPort.class);
 
         String sessionId = "session-1";
         String userId = "user-1";
@@ -130,6 +133,7 @@ public class ConversationContextWindowTest {
         when(apiKeyDomainService.getApiKey("key-1", userId)).thenReturn(apiKey);
         when(messageDomainService.listMessages(sessionId, userId)).thenReturn(messages);
         when(contextWindowPort.getContextWindow("test-model")).thenReturn(contextWindow);
+        when(contextSummaryPolicyPort.getPolicy()).thenReturn(ContextSummaryPolicy.disabled());
         when(tokenEstimatorPort.estimate(any())).thenAnswer(invocation -> {
             String text = invocation.getArgument(0);
             return text == null ? 0 : text.length();
@@ -143,6 +147,7 @@ public class ConversationContextWindowTest {
         ReflectionTestUtils.setField(service, "llmPort", llmPort);
         ReflectionTestUtils.setField(service, "tokenEstimatorPort", tokenEstimatorPort);
         ReflectionTestUtils.setField(service, "contextWindowPort", contextWindowPort);
+        ReflectionTestUtils.setField(service, "contextSummaryPolicyPort", contextSummaryPolicyPort);
 
         return new Fixture(service, llmPort, sessionId, userId);
     }

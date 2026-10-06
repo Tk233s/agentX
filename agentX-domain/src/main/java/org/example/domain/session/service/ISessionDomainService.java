@@ -1,6 +1,7 @@
 package org.example.domain.session.service;
 
 import org.example.domain.session.model.entity.SessionEntity;
+import org.example.domain.session.model.valobj.SessionMemory;
 import org.example.domain.session.model.valobj.SessionTokenBudget;
 
 import java.util.List;
@@ -39,4 +40,9 @@ public interface ISessionDomainService {
      * 累加会话已使用Token，并返回累加后的预算状态。
      */
     SessionTokenBudget addUsedTokens(String id, String userId, long tokens);
+
+    /**
+     * 保存会话摘要；expectedThroughMessageId 为本次更新前的水位。
+     */
+    boolean saveMemory(String id, String userId, String expectedThroughMessageId, SessionMemory memory);
 }

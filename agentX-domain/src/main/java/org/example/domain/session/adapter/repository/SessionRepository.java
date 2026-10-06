@@ -1,6 +1,7 @@
 package org.example.domain.session.adapter.repository;
 
 import org.example.domain.session.model.entity.SessionEntity;
+import org.example.domain.session.model.valobj.SessionMemory;
 
 import java.util.List;
 
@@ -40,4 +41,11 @@ public interface SessionRepository {
      * @return 影响行数
      */
     int incrementUsedTokens(String id, long tokens);
+
+    /**
+     * 以摘要水位做乐观锁更新，避免并发请求用旧摘要覆盖新摘要。
+     *
+     * @return 影响行数
+     */
+    int updateMemory(String id, String expectedThroughMessageId, SessionMemory memory);
 }

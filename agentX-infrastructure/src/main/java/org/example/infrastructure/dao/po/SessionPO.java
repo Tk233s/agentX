@@ -28,6 +28,15 @@ public class SessionPO {
     /** 会话累计已使用Token */
     private Long usedTokens;
 
+    /** 较早对话的压缩摘要 */
+    private String contextSummary;
+
+    /** 摘要已经覆盖到的最后一条消息ID */
+    private String summaryThroughMessageId;
+
+    /** 摘要最后更新时间 */
+    private LocalDateTime summaryUpdatedAt;
+
     /** 创建时间 */
     private LocalDateTime createdAt;
 

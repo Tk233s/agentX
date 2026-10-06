@@ -5,6 +5,7 @@ import org.example.domain.agent.model.entity.AgentEntity;
 import org.example.domain.message.adapter.repository.MessageRepository;
 import org.example.domain.session.adapter.repository.SessionRepository;
 import org.example.domain.session.model.entity.SessionEntity;
+import org.example.domain.session.model.valobj.SessionMemory;
 import org.example.domain.session.model.valobj.SessionTokenBudget;
 import org.example.domain.session.service.ISessionDomainService;
 import org.example.types.enums.ResponseCode;
@@ -98,6 +99,17 @@ public class SessionDomainServiceImpl implements ISessionDomainService {
             session = sessionRepository.findById(id);
         }
         return session.tokenBudget();
+    }
+
+    @Transactional
+    public boolean saveMemory(
+            String id,
+            String userId,
+            String expectedThroughMessageId,
+            SessionMemory memory) {
+        requireOwnedSession(id, userId);
+        SessionMemory target = memory == null ? SessionMemory.empty() : memory;
+        return sessionRepository.updateMemory(id, expectedThroughMessageId, target) > 0;
     }
 
     private SessionEntity requireOwnedSession(String id, String userId) {
