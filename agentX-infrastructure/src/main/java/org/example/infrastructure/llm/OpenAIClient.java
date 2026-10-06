@@ -1,6 +1,7 @@
 package org.example.infrastructure.llm;
 
 import org.example.domain.conversation.adapter.port.LLMPort;
+import org.example.domain.conversation.adapter.port.ContextWindowPort;
 import org.example.domain.conversation.model.entity.LLMEntity;
 import org.example.domain.conversation.model.entity.LLMResult;
 import org.example.domain.conversation.model.entity.LLMStreamChunk;
@@ -29,12 +30,12 @@ import java.util.List;
 @Component
 public class OpenAIClient implements LLMPort {
 
-    private static final int DEFAULT_MAX_TOKENS = 8192;
-
     private final ToolRegistry toolRegistry;
+    private final ContextWindowPort contextWindowPort;
 
-    public OpenAIClient(ToolRegistry toolRegistry) {
+    public OpenAIClient(ToolRegistry toolRegistry, ContextWindowPort contextWindowPort) {
         this.toolRegistry = toolRegistry;
+        this.contextWindowPort = contextWindowPort;
     }
 
     @Override
@@ -114,7 +115,9 @@ public class OpenAIClient implements LLMPort {
         // Step 2: 构建 OpenAiChatOptions（模型调用参数层）
         OpenAiChatOptions options = OpenAiChatOptions.builder()
                 .model(model)
-                .maxTokens(maxTokens != null ? maxTokens : DEFAULT_MAX_TOKENS)
+                .maxTokens(maxTokens != null
+                        ? maxTokens
+                        : contextWindowPort.getContextWindow(model).outputReserveTokens())
                 .streamUsage(true)
                 .build();
 

@@ -7,112 +7,92 @@ import org.example.domain.apikey.service.IApiKeyDomainService;
 import org.example.domain.conversation.adapter.port.ContextWindowPort;
 import org.example.domain.conversation.adapter.port.LLMPort;
 import org.example.domain.conversation.adapter.port.TokenEstimatorPort;
-import org.example.domain.conversation.model.entity.ConversationStreamEvent;
 import org.example.domain.conversation.model.entity.LLMEntity;
 import org.example.domain.conversation.model.entity.LLMResult;
-import org.example.domain.conversation.model.entity.LLMStreamChunk;
 import org.example.domain.conversation.model.valobj.ContextWindow;
 import org.example.domain.conversation.model.valobj.TokenUsage;
 import org.example.domain.conversation.service.Impl.ConversationServiceImpl;
 import org.example.domain.message.model.entity.MessageEntity;
 import org.example.domain.message.service.IMessageDomainService;
 import org.example.domain.session.model.entity.SessionEntity;
-import org.example.domain.session.model.valobj.SessionTokenBudget;
 import org.example.domain.session.service.ISessionDomainService;
 import org.example.types.enums.ResponseCode;
 import org.example.types.exception.AppException;
 import org.junit.Test;
-import org.mockito.InOrder;
+import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
-import reactor.core.publisher.Flux;
 
-import java.util.Collections;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-public class ConversationTokenBudgetTest {
+public class ConversationContextWindowTest {
 
     @Test
-    public void nonStreamConversationAccumulatesProviderUsage() {
-        Fixture fixture = fixture(10L, 100L);
+    public void keepsRecentCompleteGroupsAndDropsOldestGroup() {
+        List<MessageEntity> messages = List.of(
+                message("user", "old question"),
+                message("assistant", "old answer"),
+                message("user", "recent question"),
+                message("assistant", "recent answer"),
+                message("user", "current question"));
+        Fixture fixture = fixture(messages, new ContextWindow(70, 5), "system");
         when(fixture.llmPort.call(any(LLMEntity.class)))
-                .thenReturn(new LLMResult("ok", TokenUsage.provider(7, 3, 10), "stop"));
+                .thenReturn(new LLMResult("ok", TokenUsage.provider(10, 2, 12), "stop"));
 
-        String reply = fixture.service.doConversation(fixture.sessionId, fixture.userId, "hello");
+        fixture.service.doConversation(fixture.sessionId, fixture.userId, "current question");
 
-        assertEquals("ok", reply);
-        verify(fixture.sessionDomainService).addUsedTokens(fixture.sessionId, fixture.userId, 10L);
+        ArgumentCaptor<LLMEntity> captor = ArgumentCaptor.forClass(LLMEntity.class);
+        verify(fixture.llmPort).call(captor.capture());
+        assertEquals(
+                List.of("recent question", "recent answer", "current question"),
+                captor.getValue().getMessages().stream().map(MessageEntity::getContent).toList());
     }
 
     @Test
-    public void streamConversationAllowsCurrentAnswerAndMarksBudgetReachedAfterward() {
-        Fixture fixture = fixture(95L, 100L);
-        when(fixture.llmPort.stream(any(LLMEntity.class)))
-                .thenReturn(Flux.just(new LLMStreamChunk("ok", TokenUsage.provider(8, 2, 10), "stop")));
-        when(fixture.sessionDomainService.addUsedTokens(fixture.sessionId, fixture.userId, 10L))
-                .thenReturn(SessionTokenBudget.of(100L, 105L));
+    public void keepsCurrentUserMessageWhenOlderGroupsDoNotFit() {
+        List<MessageEntity> messages = List.of(
+                message("user", "old question"),
+                message("assistant", "old answer"),
+                message("user", "current question"));
+        Fixture fixture = fixture(messages, new ContextWindow(30, 5), null);
+        when(fixture.llmPort.call(any(LLMEntity.class)))
+                .thenReturn(new LLMResult("ok", TokenUsage.provider(5, 1, 6), "stop"));
 
-        List<ConversationStreamEvent> events = fixture.service
-                .streamConversation(fixture.sessionId, fixture.userId, "hello")
-                .collectList()
-                .block();
+        fixture.service.doConversation(fixture.sessionId, fixture.userId, "current question");
 
-        ConversationStreamEvent done = events.get(events.size() - 1);
-        assertEquals(ConversationStreamEvent.EventType.DONE, done.type());
-        assertEquals(Long.valueOf(105L), done.usedTokens());
-        assertTrue(done.limitReached());
-        InOrder persistOrder = inOrder(fixture.messageDomainService);
-        persistOrder.verify(fixture.messageDomainService)
-                .saveUserMessage(fixture.sessionId, "hello");
-        persistOrder.verify(fixture.messageDomainService)
-                .saveAssistantMessage(any(MessageEntity.class));
-        verify(fixture.sessionDomainService).addUsedTokens(fixture.sessionId, fixture.userId, 10L);
+        ArgumentCaptor<LLMEntity> captor = ArgumentCaptor.forClass(LLMEntity.class);
+        verify(fixture.llmPort).call(captor.capture());
+        assertEquals(
+                List.of("current question"),
+                captor.getValue().getMessages().stream().map(MessageEntity::getContent).toList());
     }
 
     @Test
-    public void streamFailureBeforeFirstChunkKeepsUserMessage() {
-        Fixture fixture = fixture(0L, null);
-        when(fixture.llmPort.stream(any(LLMEntity.class)))
-                .thenReturn(Flux.error(new IllegalStateException("provider failed")));
+    public void rejectsCurrentMessageThatAloneExceedsInputWindow() {
+        List<MessageEntity> messages = List.of(message("user", "current question"));
+        Fixture fixture = fixture(messages, new ContextWindow(20, 5), null);
 
         try {
-            fixture.service.streamConversation(fixture.sessionId, fixture.userId, "hello")
-                    .collectList()
-                    .block();
-            fail("Expected stream failure");
-        } catch (IllegalStateException e) {
-            assertEquals("provider failed", e.getMessage());
-        }
-
-        verify(fixture.messageDomainService).saveUserMessage(fixture.sessionId, "hello");
-        verify(fixture.messageDomainService, never()).saveAssistantMessage(any(MessageEntity.class));
-    }
-
-    @Test
-    public void exhaustedSessionIsRejectedBeforeCallingModel() {
-        Fixture fixture = fixture(100L, 100L);
-
-        try {
-            fixture.service.doConversation(fixture.sessionId, fixture.userId, "hello");
+            fixture.service.doConversation(fixture.sessionId, fixture.userId, "current question");
             fail("Expected AppException");
         } catch (AppException e) {
-            assertEquals(ResponseCode.TOKEN_LIMIT_EXCEEDED.getCode(), e.getCode());
+            assertEquals(ResponseCode.ILLEGAL_PARAMETER.getCode(), e.getCode());
         }
 
         verify(fixture.llmPort, never()).call(any(LLMEntity.class));
-        verify(fixture.messageDomainService, never()).saveUserMessage(any(), any());
     }
 
-    private Fixture fixture(long usedTokens, Long tokenLimit) {
+    private Fixture fixture(
+            List<MessageEntity> messages,
+            ContextWindow contextWindow,
+            String systemPrompt) {
         ISessionDomainService sessionDomainService = mock(ISessionDomainService.class);
         IAgentDomainService agentDomainService = mock(IAgentDomainService.class);
         IApiKeyDomainService apiKeyDomainService = mock(IApiKeyDomainService.class);
@@ -128,30 +108,32 @@ public class ConversationTokenBudgetTest {
         session.setId(sessionId);
         session.setAgentId("agent-1");
         session.setUserId(userId);
-        session.setUsedTokens(usedTokens);
-        session.setTokenLimit(tokenLimit);
+        session.setUsedTokens(0L);
 
         AgentEntity agent = new AgentEntity();
         agent.setId("agent-1");
         agent.setUserId(userId);
         agent.setApiKeyId("key-1");
         agent.setModelId("test-model");
-        agent.setTools(Collections.emptyList());
+        agent.setSystemPrompt(systemPrompt);
 
         ApiKeyEntity apiKey = new ApiKeyEntity();
         apiKey.setId("key-1");
         apiKey.setUserId(userId);
-        apiKey.setName("测试密钥");
         apiKey.setProvider("openai");
         apiKey.setApiKey("test-key");
         apiKey.setBaseUrl("https://example.test");
+        apiKey.setEnabled(true);
 
         when(sessionDomainService.getSession(sessionId, userId)).thenReturn(session);
         when(agentDomainService.getAgent("agent-1", userId)).thenReturn(agent);
         when(apiKeyDomainService.getApiKey("key-1", userId)).thenReturn(apiKey);
-        when(messageDomainService.listMessages(sessionId, userId)).thenReturn(Collections.emptyList());
-        when(contextWindowPort.getContextWindow("test-model"))
-                .thenReturn(new ContextWindow(131_072, 8_192));
+        when(messageDomainService.listMessages(sessionId, userId)).thenReturn(messages);
+        when(contextWindowPort.getContextWindow("test-model")).thenReturn(contextWindow);
+        when(tokenEstimatorPort.estimate(any())).thenAnswer(invocation -> {
+            String text = invocation.getArgument(0);
+            return text == null ? 0 : text.length();
+        });
 
         ConversationServiceImpl service = new ConversationServiceImpl();
         ReflectionTestUtils.setField(service, "sessionDomainService", sessionDomainService);
@@ -162,19 +144,18 @@ public class ConversationTokenBudgetTest {
         ReflectionTestUtils.setField(service, "tokenEstimatorPort", tokenEstimatorPort);
         ReflectionTestUtils.setField(service, "contextWindowPort", contextWindowPort);
 
-        return new Fixture(
-                service,
-                sessionDomainService,
-                messageDomainService,
-                llmPort,
-                sessionId,
-                userId);
+        return new Fixture(service, llmPort, sessionId, userId);
+    }
+
+    private MessageEntity message(String role, String content) {
+        MessageEntity message = new MessageEntity();
+        message.setRole(role);
+        message.setContent(content);
+        return message;
     }
 
     private record Fixture(
             ConversationServiceImpl service,
-            ISessionDomainService sessionDomainService,
-            IMessageDomainService messageDomainService,
             LLMPort llmPort,
             String sessionId,
             String userId) {

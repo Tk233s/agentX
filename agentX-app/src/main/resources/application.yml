@@ -10,3 +10,9 @@ auth:
     enabled: true
     exclude-paths:
       - /auth/login
+
+# 对话上下文窗口；输出部分会从模型窗口内预留
+conversation:
+  context:
+    max-window-tokens: ${CONVERSATION_MAX_WINDOW_TOKENS:131072}
+    output-reserve-tokens: ${CONVERSATION_OUTPUT_RESERVE_TOKENS:8192}

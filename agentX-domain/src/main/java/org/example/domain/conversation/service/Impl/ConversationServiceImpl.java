@@ -4,12 +4,14 @@ import org.example.domain.agent.model.entity.AgentEntity;
 import org.example.domain.agent.service.IAgentDomainService;
 import org.example.domain.apikey.model.entity.ApiKeyEntity;
 import org.example.domain.apikey.service.IApiKeyDomainService;
+import org.example.domain.conversation.adapter.port.ContextWindowPort;
 import org.example.domain.conversation.adapter.port.LLMPort;
 import org.example.domain.conversation.adapter.port.TokenEstimatorPort;
 import org.example.domain.conversation.model.entity.ConversationStreamEvent;
 import org.example.domain.conversation.model.entity.LLMEntity;
 import org.example.domain.conversation.model.entity.LLMResult;
 import org.example.domain.conversation.model.entity.LLMStreamChunk;
+import org.example.domain.conversation.model.valobj.ContextWindow;
 import org.example.domain.conversation.model.valobj.TokenUsage;
 import org.example.domain.conversation.service.IConversationService;
 import org.example.domain.message.model.entity.MessageEntity;
@@ -28,6 +30,7 @@ import reactor.core.scheduler.Schedulers;
 
 import jakarta.annotation.Resource;
 import java.util.ArrayList;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -42,6 +45,8 @@ import java.util.function.Supplier;
  */
 @Service
 public class ConversationServiceImpl implements IConversationService {
+
+    private static final int MESSAGE_OVERHEAD_TOKENS = 4;
 
     @Autowired
     private ISessionDomainService sessionDomainService;
@@ -60,6 +65,9 @@ public class ConversationServiceImpl implements IConversationService {
 
     @Autowired
     private TokenEstimatorPort tokenEstimatorPort;
+
+    @Autowired
+    private ContextWindowPort contextWindowPort;
 
     @Override
     public String doConversation(String sessionId, String userId, String content) {
@@ -288,9 +296,12 @@ public class ConversationServiceImpl implements IConversationService {
         // 4. 先保存当前用户消息。即使后续模型调用失败，用户也能在历史中看到自己发送的内容。
         messageDomainService.saveUserMessage(sessionId, content);
 
-        // 5. 查历史消息（包含刚保存的当前用户消息）
-        List<MessageEntity> messages = new ArrayList<>(
-                messageDomainService.listMessages(sessionId, userId));
+        // 5. 查历史消息（包含刚保存的当前用户消息），按上下文窗口裁剪旧消息
+        ContextWindow contextWindow = contextWindowPort.getContextWindow(agent.getModelId());
+        List<MessageEntity> messages = selectContextMessages(
+                agent.getSystemPrompt(),
+                messageDomainService.listMessages(sessionId, userId),
+                contextWindow);
 
         // 6. 组装 LLMEntity（含工具装填：从 Agent 配置取工具名列表传给基础设施层）
         LLMEntity llmEntity = LLMEntity.builder()
@@ -304,6 +315,75 @@ public class ConversationServiceImpl implements IConversationService {
                 .build();
 
         return new PreparedConversation(llmEntity, tokenBudget);
+    }
+
+    /**
+     * 从最新消息向前保留完整对话组，必要时省略较早的 user/assistant 组。
+     */
+    private List<MessageEntity> selectContextMessages(
+            String systemPrompt,
+            List<MessageEntity> messages,
+            ContextWindow contextWindow) {
+        if (messages == null || messages.isEmpty()) {
+            return List.of();
+        }
+
+        int maxInputTokens = contextWindow.maxInputTokens();
+        int usedTokens = tokenEstimatorPort.estimate(systemPrompt);
+        if (usedTokens >= maxInputTokens) {
+            throw contextWindowExceeded(usedTokens, maxInputTokens);
+        }
+
+        List<List<MessageEntity>> groups = groupMessages(messages);
+        LinkedList<MessageEntity> selected = new LinkedList<>();
+
+        for (int i = groups.size() - 1; i >= 0; i--) {
+            List<MessageEntity> group = groups.get(i);
+            int groupTokens = estimateMessages(group);
+            if (!selected.isEmpty() && usedTokens + groupTokens > maxInputTokens) {
+                break;
+            }
+
+            selected.addAll(0, group);
+            usedTokens += groupTokens;
+        }
+
+        if (usedTokens > maxInputTokens) {
+            throw contextWindowExceeded(usedTokens, maxInputTokens);
+        }
+        return new ArrayList<>(selected);
+    }
+
+    private List<List<MessageEntity>> groupMessages(List<MessageEntity> messages) {
+        List<List<MessageEntity>> groups = new ArrayList<>();
+        List<MessageEntity> currentGroup = null;
+
+        for (MessageEntity message : messages) {
+            if (currentGroup == null || "user".equals(message.getRole())) {
+                currentGroup = new ArrayList<>();
+                groups.add(currentGroup);
+            }
+            currentGroup.add(message);
+        }
+        return groups;
+    }
+
+    private int estimateMessages(List<MessageEntity> messages) {
+        int tokens = 0;
+        for (MessageEntity message : messages) {
+            tokens += tokenEstimatorPort.estimate(message.getContent()) + MESSAGE_OVERHEAD_TOKENS;
+        }
+        return tokens;
+    }
+
+    private AppException contextWindowExceeded(int usedTokens, int maxInputTokens) {
+        return new AppException(
+                ResponseCode.ILLEGAL_PARAMETER.getCode(),
+                "当前消息超出模型可用上下文（需要 "
+                        + usedTokens
+                        + " Token，可用 "
+                        + maxInputTokens
+                        + " Token），请缩短消息或新建会话");
     }
 
     private String tokenLimitExceededMessage(SessionTokenBudget tokenBudget) {
