@@ -19,6 +19,8 @@ import org.example.domain.message.service.IMessageDomainService;
 import org.example.domain.session.model.entity.SessionEntity;
 import org.example.domain.session.model.valobj.SessionMemory;
 import org.example.domain.session.service.ISessionDomainService;
+import org.example.types.enums.ResponseCode;
+import org.example.types.exception.AppException;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -28,6 +30,7 @@ import java.util.List;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -112,6 +115,71 @@ public class ConversationContextSummaryTest {
         verify(fixture.sessionDomainService, never()).saveMemory(any(), any(), any(), any());
     }
 
+    @Test
+    public void summaryUsageIsAccumulatedBeforeChatUsage() {
+        List<MessageEntity> messages = messages();
+        Fixture fixture = fixture(messages, new ContextSummaryPolicy(true, 0.5, 0.25, 100, 2));
+        when(fixture.llmPort.call(any(LLMEntity.class))).thenReturn(
+                new LLMResult("压缩后的旧信息", TokenUsage.provider(100, 20, 120), "stop"),
+                new LLMResult("ok", TokenUsage.provider(80, 2, 82), "stop"));
+        when(fixture.sessionDomainService.saveMemory(
+                eq(fixture.sessionId),
+                eq(fixture.userId),
+                isNull(),
+                any(SessionMemory.class))).thenReturn(true);
+
+        fixture.service.doConversation(fixture.sessionId, fixture.userId, "current");
+
+        verify(fixture.sessionDomainService).addUsedTokens(fixture.sessionId, fixture.userId, 120L);
+        verify(fixture.sessionDomainService).addUsedTokens(fixture.sessionId, fixture.userId, 82L);
+    }
+
+    @Test
+    public void emptySummaryWithUsageFallsBackAndIsStillCharged() {
+        List<MessageEntity> messages = messages();
+        Fixture fixture = fixture(messages, new ContextSummaryPolicy(true, 0.5, 0.25, 100, 2));
+        when(fixture.llmPort.call(any(LLMEntity.class))).thenReturn(
+                new LLMResult("", TokenUsage.provider(100, 20, 120), "length"),
+                new LLMResult("ok", TokenUsage.provider(80, 2, 82), "stop"));
+
+        String reply = fixture.service.doConversation(fixture.sessionId, fixture.userId, "current");
+
+        assertEquals("ok", reply);
+        verify(fixture.sessionDomainService).addUsedTokens(fixture.sessionId, fixture.userId, 120L);
+        verify(fixture.sessionDomainService, never()).saveMemory(any(), any(), any(), any());
+    }
+
+    @Test
+    public void summaryUsageExhaustingBudgetStopsChatModelCall() {
+        List<MessageEntity> messages = messages();
+        Fixture fixture = fixture(messages, new ContextSummaryPolicy(true, 0.5, 0.25, 100, 2));
+        SessionEntity exhausted = session(null, null);
+        exhausted.setId(fixture.sessionId);
+        exhausted.setAgentId("agent-1");
+        exhausted.setUserId(fixture.userId);
+        exhausted.setUsedTokens(100L);
+        exhausted.setTokenLimit(100L);
+
+        when(fixture.sessionDomainService.getSession(fixture.sessionId, fixture.userId))
+                .thenReturn(fixture.session, exhausted);
+        when(fixture.llmPort.call(any(LLMEntity.class)))
+                .thenReturn(new LLMResult("压缩后的旧信息", TokenUsage.provider(100, 20, 120), "stop"));
+        when(fixture.sessionDomainService.saveMemory(
+                eq(fixture.sessionId),
+                eq(fixture.userId),
+                isNull(),
+                any(SessionMemory.class))).thenReturn(true);
+
+        try {
+            fixture.service.doConversation(fixture.sessionId, fixture.userId, "current");
+            fail("Expected AppException");
+        } catch (AppException e) {
+            assertEquals(ResponseCode.TOKEN_LIMIT_EXCEEDED.getCode(), e.getCode());
+        }
+
+        verify(fixture.llmPort, times(1)).call(any(LLMEntity.class));
+    }
+
     private Fixture fixture(List<MessageEntity> messages, ContextSummaryPolicy policy) {
         return fixture(messages, session(null, null), policy);
     }
@@ -172,7 +240,7 @@ public class ConversationContextSummaryTest {
         ReflectionTestUtils.setField(service, "contextWindowPort", contextWindowPort);
         ReflectionTestUtils.setField(service, "contextSummaryPolicyPort", contextSummaryPolicyPort);
 
-        return new Fixture(service, sessionDomainService, llmPort, sessionId, userId);
+        return new Fixture(service, sessionDomainService, llmPort, sessionId, userId, session);
     }
 
     private SessionEntity session(String summary, String throughMessageId) {
@@ -217,7 +285,8 @@ public class ConversationContextSummaryTest {
             ISessionDomainService sessionDomainService,
             LLMPort llmPort,
             String sessionId,
-            String userId) {
+            String userId,
+            SessionEntity session) {
     }
 
     private record UserMessages(

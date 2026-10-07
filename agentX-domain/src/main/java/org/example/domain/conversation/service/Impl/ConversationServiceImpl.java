@@ -356,7 +356,19 @@ public class ConversationServiceImpl implements IConversationService {
                 summaryPolicy,
                 true);
 
-        // 6. 组装 LLMEntity（含工具装填：从 Agent 配置取工具名列表传给基础设施层）
+        // 6. 摘要调用也会消耗会话 Token，重新读取预算，避免摘要耗尽额度后仍调用主模型。
+        SessionEntity refreshedSession = sessionDomainService.getSession(sessionId, userId);
+        if (refreshedSession == null) {
+            throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "会话不存在");
+        }
+        tokenBudget = refreshedSession.tokenBudget();
+        if (tokenBudget.isExhausted()) {
+            throw new AppException(
+                    ResponseCode.TOKEN_LIMIT_EXCEEDED.getCode(),
+                    tokenLimitExceededMessage(tokenBudget));
+        }
+
+        // 7. 组装 LLMEntity（含工具装填：从 Agent 配置取工具名列表传给基础设施层）
         LLMEntity llmEntity = LLMEntity.builder()
                 .model(agent.getModelId())
                 .apiKey(apiKey.getApiKey())
@@ -402,6 +414,13 @@ public class ConversationServiceImpl implements IConversationService {
                     agent,
                     apiKey,
                     summaryPolicy);
+
+            if (summaryResult.usedTokens() > 0) {
+                sessionDomainService.addUsedTokens(
+                        sessionId,
+                        userId,
+                        summaryResult.usedTokens());
+            }
 
             if (!summaryResult.consistent()) {
                 if (allowRetry) {
@@ -497,6 +516,7 @@ public class ConversationServiceImpl implements IConversationService {
             ContextSummaryPolicy policy) {
         SessionMemory workingMemory = memory == null ? SessionMemory.empty() : memory;
         List<MessageEntity> remainingMessages = new ArrayList<>(pendingMessages);
+        long usedTokens = 0L;
 
         try {
             for (int attempt = 0; attempt < MAX_SUMMARY_CALLS_PER_TURN; attempt++) {
@@ -526,7 +546,7 @@ public class ConversationServiceImpl implements IConversationService {
                     break;
                 }
 
-                String nextSummary = generateSummary(
+                GeneratedSummary generatedSummary = generateSummary(
                         sessionId,
                         userId,
                         workingMemory.summary(),
@@ -534,6 +554,8 @@ public class ConversationServiceImpl implements IConversationService {
                         agent,
                         apiKey,
                         policy);
+                usedTokens += tokenDelta(generatedSummary.usage());
+                String nextSummary = generatedSummary.content();
                 if (nextSummary == null || nextSummary.isBlank()) {
                     break;
                 }
@@ -553,7 +575,7 @@ public class ConversationServiceImpl implements IConversationService {
                         workingMemory.summarizedThroughMessageId(),
                         updatedMemory);
                 if (!saved) {
-                    return new SummaryResult(workingMemory, false);
+                    return new SummaryResult(workingMemory, false, usedTokens);
                 }
 
                 workingMemory = updatedMemory;
@@ -563,7 +585,7 @@ public class ConversationServiceImpl implements IConversationService {
             log.warn("会话[{}]摘要生成失败，本次回退到滑动窗口: {}", sessionId, e.getMessage());
         }
 
-        return new SummaryResult(workingMemory, true);
+        return new SummaryResult(workingMemory, true, usedTokens);
     }
 
     /**
@@ -598,7 +620,7 @@ public class ConversationServiceImpl implements IConversationService {
     /**
      * 合并旧摘要与新增历史，调用非流式、无工具的模型生成新的会话摘要。
      */
-    private String generateSummary(
+    private GeneratedSummary generateSummary(
             String sessionId,
             String userId,
             String previousSummary,
@@ -629,10 +651,20 @@ public class ConversationServiceImpl implements IConversationService {
                 .build();
 
         LLMResult result = llmPort.call(summaryEntity);
-        if (result == null || result.content() == null || result.content().isBlank()) {
-            throw new IllegalStateException("摘要模型没有返回有效内容");
+        if (result == null) {
+            log.warn("会话[{}]摘要模型没有返回结果，本次回退到滑动窗口", sessionId);
+            return new GeneratedSummary("", null);
         }
-        return result.content().trim();
+
+        String content = result.content() == null ? "" : result.content().trim();
+        TokenUsage usage = resolveUsage(result.usage(), summaryEntity, content);
+        if (content.isBlank()) {
+            log.warn("会话[{}]摘要模型返回空正文，finishReason={}，tokens={}",
+                    sessionId,
+                    normalizeFinishReason(result.finishReason()),
+                    tokenDelta(usage));
+        }
+        return new GeneratedSummary(content, usage);
     }
 
     /**
@@ -816,6 +848,9 @@ public class ConversationServiceImpl implements IConversationService {
     private record PreparedConversation(LLMEntity llmEntity, SessionTokenBudget tokenBudget) {
     }
 
-    private record SummaryResult(SessionMemory memory, boolean consistent) {
+    private record GeneratedSummary(String content, TokenUsage usage) {
+    }
+
+    private record SummaryResult(SessionMemory memory, boolean consistent, long usedTokens) {
     }
 }

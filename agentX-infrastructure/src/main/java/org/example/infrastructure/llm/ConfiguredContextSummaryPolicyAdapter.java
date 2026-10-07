@@ -18,7 +18,10 @@ public class ConfiguredContextSummaryPolicyAdapter implements ContextSummaryPoli
 
     private double targetRatio = 0.65;
 
-    private int maxSummaryTokens = 4096;
+    /**
+     * 摘要模型单次调用的总输出上限，包含推理内容与摘要正文。
+     */
+    private int maxSummaryTokens = 8192;
 
     private int minRecentGroups = 4;
 
