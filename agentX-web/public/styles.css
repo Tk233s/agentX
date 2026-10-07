@@ -510,6 +510,41 @@ textarea:disabled {
   font-weight: 700;
 }
 
+.session-search {
+  position: relative;
+  padding: 0 9px 8px;
+}
+
+.session-search > svg {
+  position: absolute;
+  z-index: 1;
+  top: 17px;
+  left: 20px;
+  color: var(--sidebar-muted);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.session-search input {
+  width: 100%;
+  min-height: 36px;
+  padding: 0 10px 0 34px;
+  border: 1px solid var(--sidebar-line);
+  border-radius: var(--radius-sm);
+  color: var(--sidebar-ink);
+  background: rgba(255, 255, 255, 0.045);
+  outline: 0;
+}
+
+.session-search input::placeholder {
+  color: #78908f;
+}
+
+.session-search input:focus {
+  border-color: #4b6a6d;
+  background: rgba(255, 255, 255, 0.075);
+}
+
 .session-list {
   min-height: 0;
   padding: 2px 9px 10px;
@@ -604,6 +639,10 @@ textarea:disabled {
   color: var(--sidebar-muted);
   text-align: center;
   font-size: 12px;
+}
+
+.session-search-empty {
+  margin-top: 4px;
 }
 
 .sidebar-footer {
@@ -826,6 +865,25 @@ textarea:disabled {
   font-size: 11px;
 }
 
+.message-copy-button {
+  display: inline-grid;
+  width: 24px;
+  height: 24px;
+  margin: -5px 0 -4px 2px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  place-items: center;
+  color: var(--ink-faint);
+  background: transparent;
+  cursor: pointer;
+}
+
+.message-copy-button:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
 .message-row.user .message-meta {
   justify-content: flex-end;
 }
@@ -973,6 +1031,44 @@ textarea:disabled {
 .composer-shell {
   padding: 14px clamp(18px, 5vw, 72px) 20px;
   background: #f6f8f8;
+}
+
+.token-limit-notice {
+  display: flex;
+  width: min(100%, 860px);
+  margin: 0 auto 8px;
+  padding: 10px 12px;
+  border: 1px solid #efc7c1;
+  border-radius: var(--radius-sm);
+  align-items: center;
+  gap: 8px;
+  color: #9b342b;
+  background: #fff5f3;
+  font-size: 12px;
+}
+
+.token-limit-notice svg {
+  flex: 0 0 auto;
+}
+
+.token-limit-notice span {
+  min-width: 0;
+  flex: 1;
+}
+
+.text-button {
+  flex: 0 0 auto;
+  padding: 3px 5px;
+  border: 0;
+  color: var(--danger);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.text-button:hover {
+  text-decoration: underline;
 }
 
 .composer {

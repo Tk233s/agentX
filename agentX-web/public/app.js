@@ -11,6 +11,7 @@ const icons = {
   bot: '<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>',
   check: '<path d="M20 6 9 17l-5-5"/>',
   chevronDown: '<path d="m6 9 6 6 6-6"/>',
+  copy: '<rect width="14" height="14" x="8" y="8" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
   key: '<circle cx="7.5" cy="15.5" r="3.5"/><path d="m10.5 12.5 8-8"/><path d="m15 8 2 2"/><path d="m18 5 2 2"/>',
   lock: '<rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
   logOut: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/>',
@@ -97,6 +98,98 @@ function createEmptyStreamMetadata() {
   };
 }
 
+function userFacingErrorMessage(rawMessage, fallback) {
+  const message = String(rawMessage || "").trim();
+  if (!message) {
+    return fallback;
+  }
+
+  const technicalMessage =
+    /系统异常|internal server error|permission denied|getsockopt|i\/o error|connectexception|connection reset|timeout|timed out|socket|8091|http\s*\d{3}/i;
+  return technicalMessage.test(message) ? fallback : message;
+}
+
+function isAutomaticSessionTitle(title) {
+  const value = String(title || "").trim();
+  return !value || value === "新会话";
+}
+
+function buildAutomaticSessionTitle(content) {
+  const normalized = String(content || "")
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized) {
+    return "";
+  }
+
+  const firstSentence = normalized.split(/[。！？!?；;\n]/)[0].trim() || normalized;
+  const concise = firstSentence
+    .replace(/^(请|帮我|麻烦|你能|可以帮我|给我|把)\s*/, "")
+    .trim();
+  return Array.from(concise).slice(0, 24).join("").trim();
+}
+
+async function applyAutomaticSessionTitle(session, content) {
+  if (!session?.id || !isAutomaticSessionTitle(session.title)) {
+    return;
+  }
+
+  const title = buildAutomaticSessionTitle(content);
+  if (!title || title === session.title) {
+    return;
+  }
+
+  try {
+    const updated = await apiRequest(
+      `/session/rename?id=${encodeURIComponent(session.id)}&title=${encodeURIComponent(title)}`,
+      { method: "POST" },
+    );
+    state.sessions = state.sessions.map((item) =>
+      item.id === updated.id ? updated : item,
+    );
+    if (state.auth && state.activeSessionId === updated.id) {
+      renderWorkspace();
+    }
+  } catch {
+    // 自动标题失败不影响发送消息，用户仍可手动重命名。
+  }
+}
+
+async function writeClipboard(text) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  textarea.style.pointerEvents = "none";
+  document.body.append(textarea);
+  textarea.select();
+  const copied = document.execCommand("copy");
+  textarea.remove();
+  if (!copied) {
+    throw new Error("copy failed");
+  }
+}
+
+async function copyMessage(messageId) {
+  const message = state.messages.find((item) => item.id === messageId);
+  if (!message?.content) {
+    return;
+  }
+
+  try {
+    await writeClipboard(message.content);
+    showToast("success", "消息已复制");
+  } catch {
+    showToast("error", "复制失败", "请手动选择消息内容进行复制。");
+  }
+}
+
 function parseStreamPayload(data) {
   try {
     return JSON.parse(data);
@@ -154,7 +247,7 @@ async function apiRequest(path, options = {}) {
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {
-    throw new ApiError("无法连接后端服务，请确认 8091 端口已经启动");
+    throw new ApiError("无法连接服务，请检查网络后重试");
   }
 
   let payload = null;
@@ -169,11 +262,17 @@ async function apiRequest(path, options = {}) {
   }
 
   if (!response.ok) {
-    throw new ApiError(payload?.info || `请求失败，HTTP ${response.status}`, String(response.status));
+    const fallback = response.status >= 500
+      ? "服务暂时不可用，请稍后重试"
+      : `请求失败，请稍后重试`;
+    throw new ApiError(userFacingErrorMessage(payload?.info, fallback), String(response.status));
   }
 
   if (payload?.code && payload.code !== "0000") {
-    throw new ApiError(payload.info || "请求失败", payload.code);
+    throw new ApiError(
+      userFacingErrorMessage(payload.info, "请求失败，请稍后重试"),
+      payload.code,
+    );
   }
 
   return payload?.data;
@@ -246,7 +345,7 @@ async function streamApiRequest(path, body, onEvent, signal) {
     if (error.name === "AbortError") {
       throw error;
     }
-    throw new ApiError("无法连接后端服务，请确认 8091 端口已经启动");
+    throw new ApiError("无法连接服务，请检查网络后重试");
   }
 
   if (response.status === 401) {
@@ -256,7 +355,10 @@ async function streamApiRequest(path, body, onEvent, signal) {
 
   if (!response.ok) {
     const payload = await response.json().catch(() => null);
-    throw new ApiError(payload?.info || `请求失败，HTTP ${response.status}`, String(response.status));
+    const fallback = response.status >= 500
+      ? "模型暂时无法响应，请稍后重试"
+      : "请求失败，请稍后重试";
+    throw new ApiError(userFacingErrorMessage(payload?.info, fallback), String(response.status));
   }
 
   if (!response.body) {
@@ -270,7 +372,10 @@ async function streamApiRequest(path, body, onEvent, signal) {
   const dispatch = (block) => {
     const sseEvent = parseSseEvent(block);
     if (sseEvent.event === "error") {
-      throw new ApiError(sseEvent.data || "流式对话失败");
+      throw new ApiError(userFacingErrorMessage(
+        sseEvent.data,
+        "模型暂时无法响应，请稍后重试",
+      ));
     }
     onEvent(sseEvent);
   };
@@ -547,11 +652,22 @@ function renderSessions() {
 
   return state.sessions
     .map(
-      (session) => `
+      (session) => {
+        const agentName =
+          state.agents.find((agent) => agent.id === session.agentId)?.name || "";
+        const searchText = [
+          session.title || "新会话",
+          agentName,
+          sessionTokenSummary(session, true),
+        ]
+          .join(" ")
+          .toLowerCase();
+        return `
         <div
           class="session-item ${session.id === state.activeSessionId ? "active" : ""}"
           data-action="select-session"
           data-session-id="${escapeHtml(session.id)}"
+          data-search="${escapeHtml(searchText)}"
           role="button"
           tabindex="0"
         >
@@ -579,7 +695,8 @@ function renderSessions() {
             >${svgIcon("trash", 15)}</button>
           </div>
         </div>
-      `,
+      `;
+      },
     )
     .join("");
 }
@@ -592,6 +709,18 @@ function renderMessage(message, pending = false) {
       : '<span class="typing-dots" aria-label="正在生成回复"><span></span><span></span><span></span></span>'
       : escapeHtml(message.content);
   const stats = isUser ? "" : renderMessageStats(message);
+  const copyButton = !pending && message.content
+    ? `
+      <button
+        class="message-copy-button"
+        type="button"
+        data-action="copy-message"
+        data-message-id="${escapeHtml(message.id)}"
+        title="复制消息"
+        aria-label="复制消息"
+      >${svgIcon("copy", 13)}</button>
+    `
+    : "";
   const deliveryError = isUser && message.failed
     ? '<div class="message-delivery-error">发送失败，请重试</div>'
     : "";
@@ -605,6 +734,7 @@ function renderMessage(message, pending = false) {
         <div class="message-meta">
           <span class="message-role">${isUser ? "你" : "Agent"}</span>
           <span>${escapeHtml(formatMessageTime(message.createTime))}</span>
+          ${copyButton}
         </div>
         <div class="message-bubble">${content}</div>
         ${deliveryError}
@@ -1137,7 +1267,17 @@ function renderWorkspace() {
                     ${!state.agents.length || state.workspaceBusy ? "disabled" : ""}
                   >${svgIcon("plus", 18)}</button>
                 </div>
-                <div class="session-list">${renderSessions()}</div>
+                <div class="session-search">
+                  ${svgIcon("search", 15)}
+                  <label class="sr-only" for="session-search">搜索会话</label>
+                  <input id="session-search" type="search" placeholder="搜索会话" autocomplete="off" />
+                </div>
+                <div class="session-list">
+                  ${renderSessions()}
+                  <div class="sidebar-empty session-search-empty" data-session-search-empty hidden>
+                    没有匹配的会话
+                  </div>
+                </div>
               </section>
             `
             : state.view === "agents"
@@ -1279,6 +1419,17 @@ function renderWorkspace() {
                   <div class="message-column">${renderChatContent()}</div>
                 </div>
                 <div class="composer-shell">
+                  ${
+                    sessionTokenLocked
+                      ? `
+                        <div class="token-limit-notice" role="status">
+                          ${svgIcon("alert", 16)}
+                          <span>本会话 Token 额度已用完（${escapeHtml(sessionTokenSummary(session))}），无法继续发送。</span>
+                          <button class="text-button" type="button" data-action="new-session">新建会话</button>
+                        </div>
+                      `
+                      : ""
+                  }
                   <form class="composer" id="composer-form">
                     <label class="sr-only" for="composer-input">消息</label>
                     <textarea
@@ -2298,6 +2449,8 @@ async function sendMessage(content) {
     return;
   }
 
+  void applyAutomaticSessionTitle(session, text);
+
   const optimisticMessage = {
     id: `pending-${Date.now()}`,
     role: "user",
@@ -2397,6 +2550,11 @@ async function sendMessage(content) {
     }
     if (error.code === "429") {
       showToast("info", "Token 额度已用完", error.message);
+      try {
+        await refreshWorkspace({ render: false, quiet: true });
+      } catch {
+        // 额度状态刷新失败时仍保留当前提示和已有消息。
+      }
     } else {
       showToast("error", "发送失败", error.message);
     }
@@ -2615,6 +2773,7 @@ app.addEventListener("click", async (event) => {
   const sessionId = button.dataset.sessionId;
   const agentId = button.dataset.agentId;
   const apiKeyId = button.dataset.apiKeyId;
+  const messageId = button.dataset.messageId;
 
   if (action === "select-session") {
     await selectSession(sessionId);
@@ -2652,6 +2811,8 @@ app.addEventListener("click", async (event) => {
     await deleteApiKey(apiKeyId || state.modal?.apiKeyId);
   } else if (action === "stop-generation") {
     stopGeneration();
+  } else if (action === "copy-message") {
+    await copyMessage(messageId);
   } else if (action === "close-modal") {
     closeModal();
   } else if (action === "logout") {
@@ -2689,6 +2850,23 @@ app.addEventListener("input", (event) => {
     document.querySelectorAll("[data-agent-row]").forEach((row) => {
       row.hidden = query && !String(row.dataset.search || "").includes(query);
     });
+    return;
+  }
+
+  if (event.target.id === "session-search") {
+    const query = event.target.value.trim().toLowerCase();
+    let visibleCount = 0;
+    document.querySelectorAll(".session-item[data-search]").forEach((row) => {
+      const visible = !query || String(row.dataset.search || "").includes(query);
+      row.hidden = !visible;
+      if (visible) {
+        visibleCount += 1;
+      }
+    });
+    const empty = document.querySelector("[data-session-search-empty]");
+    if (empty) {
+      empty.hidden = !query || visibleCount > 0;
+    }
   }
 });
 
