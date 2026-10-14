@@ -1,10 +1,15 @@
 package org.example.domain.agent.model.entity;
 
 import lombok.Data;
+import org.example.types.enums.AgentCapabilityProfile;
 import org.example.types.enums.ResponseCode;
 import org.example.types.exception.AppException;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 
 /**
@@ -38,11 +43,17 @@ public class AgentEntity {
     private String modelId;
 
     /**
-     * 工具名称列表。该 Agent 配置启用的工具，如 ["weather", "file"]。
-     * 对话时会传给基础设施层，基础设施根据名称从 ToolRegistry 取出工具实例注册给 LLM。
+     * Agent 能力模式。
+     * 工具由运行时根据该模式自动提供，tools 仅作为高级覆盖项。
+     */
+    private String capabilityProfile;
+
+    /**
+     * 高级工具覆盖列表。
+     * 运行模式提供的工具会与该列表合并，普通 Agent 不需要手工配置。
      * 数据库存储为 JSON 数组字符串。
      */
-    private java.util.List<String> tools;
+    private List<String> tools;
 
     /** 智能体状态：true-启用，false-禁用 */
     private Boolean enabled;
@@ -63,7 +74,8 @@ public class AgentEntity {
     public static AgentEntity createNew(String name, String avatar, String description,
                                         String systemPrompt, String welcomeMessage, String userId,
                                         String apiKeyId, String modelId,
-                                        java.util.List<String> tools) {
+                                        String capabilityProfile,
+                                        List<String> tools) {
         AgentEntity agent = new AgentEntity();
         agent.setId(UUID.randomUUID().toString().replace("-", ""));
         agent.setName(name);
@@ -73,12 +85,33 @@ public class AgentEntity {
         agent.setWelcomeMessage(welcomeMessage);
         agent.setApiKeyId(apiKeyId);
         agent.setModelId(modelId);
+        agent.setCapabilityProfile(capabilityProfile);
         agent.setTools(tools);
         agent.setEnabled(true);
         agent.setUserId(userId);
         agent.setCreatedAt(LocalDateTime.now());
         agent.setUpdatedAt(LocalDateTime.now());
         return agent;
+    }
+
+    /**
+     * 兼容旧调用方：未指定能力模式时按自定义模式处理。
+     */
+    public static AgentEntity createNew(String name, String avatar, String description,
+                                        String systemPrompt, String welcomeMessage, String userId,
+                                        String apiKeyId, String modelId,
+                                        List<String> tools) {
+        return createNew(
+                name,
+                avatar,
+                description,
+                systemPrompt,
+                welcomeMessage,
+                userId,
+                apiKeyId,
+                modelId,
+                AgentCapabilityProfile.CUSTOM.name(),
+                tools);
     }
 
     /**
@@ -91,5 +124,33 @@ public class AgentEntity {
         if (apiKeyId == null || apiKeyId.trim().isEmpty()) {
             throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "API密钥不能为空");
         }
+    }
+
+    /**
+     * 统一清理工具绑定：去空、去重、转小写。
+     */
+    public void normalizeTools() {
+        if (tools == null || tools.isEmpty()) {
+            tools = new ArrayList<>();
+            return;
+        }
+        LinkedHashSet<String> normalized = new LinkedHashSet<>();
+        for (String tool : tools) {
+            if (tool != null && !tool.isBlank()) {
+                normalized.add(tool.trim().toLowerCase(Locale.ROOT));
+            }
+        }
+        tools = new ArrayList<>(normalized);
+    }
+
+    /**
+     * 统一能力模式：空值默认普通对话，非法值由领域校验统一拦截。
+     */
+    public void normalizeCapabilityProfile() {
+        if (capabilityProfile == null || capabilityProfile.isBlank()) {
+            capabilityProfile = AgentCapabilityProfile.CHAT.name();
+            return;
+        }
+        capabilityProfile = AgentCapabilityProfile.parse(capabilityProfile).name();
     }
 }

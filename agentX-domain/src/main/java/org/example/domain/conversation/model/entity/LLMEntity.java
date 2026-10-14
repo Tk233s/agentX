@@ -21,6 +21,12 @@ public class LLMEntity {
 
     private String provider;
 
+    /**
+     * 当前会话与用户上下文，用于工具调用审计。
+     */
+    private String sessionId;
+    private String userId;
+
     private String systemPrompt;
     private List<MessageEntity> messages;
 

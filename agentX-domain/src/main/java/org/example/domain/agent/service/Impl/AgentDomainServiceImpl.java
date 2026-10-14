@@ -5,6 +5,7 @@ import org.example.domain.agent.model.entity.AgentEntity;
 import org.example.domain.agent.service.IAgentDomainService;
 import org.example.domain.apikey.model.entity.ApiKeyEntity;
 import org.example.domain.apikey.service.IApiKeyDomainService;
+import org.example.domain.tool.adapter.port.ToolRuntimePort;
 import org.example.types.enums.ResponseCode;
 import org.example.types.exception.AppException;
 import org.springframework.stereotype.Service;
@@ -26,6 +27,9 @@ public class AgentDomainServiceImpl implements IAgentDomainService {
     @Resource
     private IApiKeyDomainService apiKeyDomainService;
 
+    @Resource
+    private ToolRuntimePort toolRuntimePort;
+
     /**
      * 创建智能体
      * @param agent 待创建的智能体实体
@@ -35,9 +39,11 @@ public class AgentDomainServiceImpl implements IAgentDomainService {
     public AgentEntity createAgent(AgentEntity agent) {
         // 1. 业务规则校验
         agent.validate();
-        // 2. 校验密钥存在、归属当前用户且已启用
+        // 2. 校验工具绑定并统一工具标识
+        validateTools(agent);
+        // 3. 校验密钥存在、归属当前用户且已启用
         validateApiKey(agent.getApiKeyId(), agent.getUserId());
-        // 3. 落库
+        // 4. 落库
         agentRepository.save(agent);
         return agent;
     }
@@ -51,16 +57,22 @@ public class AgentDomainServiceImpl implements IAgentDomainService {
     public AgentEntity updateAgent(AgentEntity agent, String userId) {
         // 1. 存在性与归属校验
         AgentEntity existing = requireOwnedAgent(agent.getId(), userId);
-        // 2. 业务字段校验（id 必填由 trigger 层分组校验保证）
+        // 2. 请求未显式传能力模式时沿用原配置，避免编辑其他字段时模式被重置
+        if (agent.getCapabilityProfile() == null || agent.getCapabilityProfile().isBlank()) {
+            agent.setCapabilityProfile(existing.getCapabilityProfile());
+        }
+        // 3. 业务字段校验（id 必填由 trigger 层分组校验保证）
         agent.validate();
-        // 3. 校验密钥存在、归属当前用户且已启用
+        // 4. 校验能力模式与工具绑定，并统一工具标识
+        validateTools(agent);
+        // 5. 校验密钥存在、归属当前用户且已启用
         validateApiKey(agent.getApiKeyId(), userId);
-        // 4. 保留入参不可覆盖的字段，并刷新更新时间
+        // 6. 保留入参不可覆盖的字段，并刷新更新时间
         agent.setUserId(existing.getUserId());
         agent.setEnabled(existing.getEnabled());
         agent.setCreatedAt(existing.getCreatedAt());
         agent.setUpdatedAt(LocalDateTime.now());
-        // 5. 落库更新
+        // 7. 落库更新
         agentRepository.update(agent);
         return agent;
     }
@@ -126,5 +138,15 @@ public class AgentDomainServiceImpl implements IAgentDomainService {
         if (Boolean.FALSE.equals(apiKey.getEnabled())) {
             throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "API密钥已停用");
         }
+    }
+
+    private void validateTools(AgentEntity agent) {
+        agent.normalizeTools();
+        agent.normalizeCapabilityProfile();
+        // 生效工具 = 能力模式默认工具 + 显式高级覆盖项
+        List<String> effectiveToolIds = toolRuntimePort.resolveToolIds(
+                agent.getCapabilityProfile(),
+                agent.getTools());
+        toolRuntimePort.validateBindings(effectiveToolIds);
     }
 }

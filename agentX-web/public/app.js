@@ -24,6 +24,7 @@ const icons = {
   search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
   send: '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
   stop: '<rect width="12" height="12" x="6" y="6" rx="2" fill="currentColor" stroke="none"/>',
+  tool: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
   trash: '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/>',
   user: '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
   x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
@@ -33,6 +34,7 @@ const state = {
   auth: readJson(AUTH_KEY),
   agents: [],
   apiKeys: [],
+  toolDefinitions: [],
   sessions: [],
   messages: [],
   activeAgentId: sessionStorage.getItem(AGENT_KEY) || "",
@@ -43,6 +45,7 @@ const state = {
   workspaceBusy: false,
   agentBusy: false,
   apiKeyBusy: false,
+  toolBusy: false,
   messagesBusy: false,
   chatBusy: false,
   sidebarOpen: false,
@@ -216,6 +219,7 @@ function clearAuth() {
   state.auth = null;
   state.agents = [];
   state.apiKeys = [];
+  state.toolDefinitions = [];
   state.sessions = [];
   state.messages = [];
   state.activeAgentId = "";
@@ -436,6 +440,57 @@ function providerLabel(provider) {
     return "Anthropic";
   }
   return provider || "未配置";
+}
+
+function toolDefinitionById(toolId) {
+  return state.toolDefinitions.find((tool) => tool.id === toolId) || null;
+}
+
+function toolDisplayName(toolId) {
+  return toolDefinitionById(toolId)?.name || toolId || "未知工具";
+}
+
+/** Agent 能力模式：决定运行时自动提供哪些工具 */
+const CAPABILITY_PROFILES = [
+  { id: "CHAT", name: "普通对话", description: "只对话，不启用工具" },
+  { id: "CODE_READONLY", name: "代码只读", description: "只读代码工作区" },
+  { id: "CODE", name: "代码工作区", description: "可读写工作区文件" },
+  { id: "RESEARCH", name: "知识库研究", description: "检索知识库" },
+  { id: "CUSTOM", name: "自定义", description: "只使用下方手动绑定的工具" },
+];
+
+function capabilityProfileLabel(profile) {
+  const matched = CAPABILITY_PROFILES.find((item) => item.id === profile);
+  return matched ? matched.name : CAPABILITY_PROFILES[0].name;
+}
+
+function capabilityProfileDescription(profile) {
+  const matched = CAPABILITY_PROFILES.find((item) => item.id === profile);
+  return matched ? matched.description : "";
+}
+
+/** 与后端 ToolRegistry.defaultToolIds 保持一致，仅用于表单里的生效工具提示 */
+const CAPABILITY_DEFAULT_TOOLS = {
+  CHAT: [],
+  CODE_READONLY: [],
+  CODE: ["file"],
+  RESEARCH: [],
+  CUSTOM: [],
+};
+
+function capabilityEffectiveTools(profile, selectedTools) {
+  const selected =
+    selectedTools instanceof Set ? selectedTools : new Set(selectedTools || []);
+  const merged = new Set([
+    ...(CAPABILITY_DEFAULT_TOOLS[profile] || CAPABILITY_DEFAULT_TOOLS.CHAT),
+    ...selected,
+  ]);
+  return [...merged];
+}
+
+function effectiveToolHint(profile, selectedTools) {
+  const toolIds = capabilityEffectiveTools(profile, selectedTools);
+  return toolIds.length ? toolIds.map(toolDisplayName).join("、") : "无（纯对话）";
 }
 
 function persistSelection() {
@@ -1060,6 +1115,141 @@ function renderApiKeyManager() {
   `;
 }
 
+function renderToolQuickList() {
+  if (state.workspaceBusy && !state.toolDefinitions.length) {
+    return `
+      <div class="sidebar-empty">
+        <span class="spinner small"></span>
+        <div>正在加载工具</div>
+      </div>
+    `;
+  }
+
+  if (!state.toolDefinitions.length) {
+    return '<div class="sidebar-empty">暂无可用工具</div>';
+  }
+
+  return state.toolDefinitions
+    .map((tool) => {
+      const method = tool.methods?.[0];
+      return `
+        <button
+          class="sidebar-agent-item"
+          type="button"
+          data-action="test-tool"
+          data-tool-id="${escapeHtml(tool.id)}"
+          data-method-name="${escapeHtml(method?.name || "")}"
+        >
+          <span class="api-key-mark">${svgIcon("tool", 15)}</span>
+          <span class="sidebar-agent-copy">
+            <span class="sidebar-agent-name">${escapeHtml(tool.name || tool.id)}</span>
+            <span class="sidebar-agent-meta">${tool.methods?.length || 0} 个方法</span>
+          </span>
+        </button>
+      `;
+    })
+    .join("");
+}
+
+function renderToolManager() {
+  if (state.workspaceBusy && !state.toolDefinitions.length) {
+    return `
+      <section class="agent-page">
+        <div class="agent-page-loading">
+          <span class="spinner"></span>
+          <span>正在加载工具</span>
+        </div>
+      </section>
+    `;
+  }
+
+  if (!state.toolDefinitions.length) {
+    return `
+      <section class="agent-page">
+        <div class="empty-state agent-empty-state">
+          <div class="empty-icon">${svgIcon("tool", 24)}</div>
+          <h2>暂无可用工具</h2>
+          <p>后端注册带 @Tool 方法的工具 Bean 后，这里会自动展示。</p>
+        </div>
+      </section>
+    `;
+  }
+
+  const methodCount = state.toolDefinitions.reduce(
+    (total, tool) => total + (tool.methods?.length || 0),
+    0,
+  );
+
+  return `
+    <section class="agent-page">
+      <div class="agent-page-toolbar">
+        <div class="api-key-summary">
+          <span class="provider-pill">${state.toolDefinitions.length} 个工具</span>
+          <span class="muted-text">${methodCount} 个可调用方法</span>
+        </div>
+        <span class="agent-count">仅供 Agent 绑定与手动验证</span>
+      </div>
+      <div class="tool-catalog-grid">
+        ${state.toolDefinitions
+          .map(
+            (tool) => `
+              <article class="tool-catalog-card">
+                <div class="tool-catalog-header">
+                  <span class="tool-catalog-icon">${svgIcon("tool", 18)}</span>
+                  <div>
+                    <h2>${escapeHtml(tool.name || tool.id)}</h2>
+                    <code>${escapeHtml(tool.id)}</code>
+                  </div>
+                </div>
+                <p>${escapeHtml(tool.description || "暂无工具说明")}</p>
+                <div class="tool-method-list">
+                  ${(tool.methods || [])
+                    .map(
+                      (method) => `
+                        <article class="tool-method-row">
+                          <div>
+                            <strong>${escapeHtml(method.name)}</strong>
+                            <p>${escapeHtml(method.description || "暂无方法说明")}</p>
+                            <div class="tool-parameter-list">
+                              ${
+                                (method.parameters || []).length
+                                  ? method.parameters
+                                      .map(
+                                        (parameter) => `
+                                          <span class="tool-param-pill" title="${escapeHtml(parameter.description || "")}">
+                                            ${escapeHtml(parameter.name)}: ${escapeHtml(parameter.type)}${parameter.required ? " *" : ""}
+                                          </span>
+                                        `,
+                                      )
+                                      .join("")
+                                  : '<span class="muted-text">无参数</span>'
+                              }
+                            </div>
+                          </div>
+                          <button
+                            class="secondary-button tool-test-button"
+                            type="button"
+                            data-action="test-tool"
+                            data-tool-id="${escapeHtml(tool.id)}"
+                            data-method-name="${escapeHtml(method.name)}"
+                          >
+                            ${svgIcon("send", 14)}
+                            <span>测试</span>
+                          </button>
+                        </article>
+                      `,
+                    )
+                    .join("")}
+                </div>
+              </article>
+            `,
+          )
+          .join("")}
+      </div>
+    </section>
+  `;
+}
+
 function renderAgentManager() {
   if (state.workspaceBusy && !state.agents.length) {
     return `
@@ -1103,7 +1293,7 @@ function renderAgentManager() {
           <span>Agent</span>
           <span>API 密钥</span>
           <span>模型</span>
-          <span>工具</span>
+          <span>模式</span>
           <span>更新时间</span>
           <span></span>
         </div>
@@ -1117,12 +1307,14 @@ function renderAgentManager() {
                 apiKey?.name,
                 apiKey?.provider,
                 agent.modelId,
+                capabilityProfileLabel(agent.capabilityProfile),
                 ...(agent.tools || []),
               ]
                 .filter(Boolean)
                 .join(" ")
                 .toLowerCase();
-              const tools = Array.isArray(agent.tools) ? agent.tools : [];
+              const capabilityProfile = agent.capabilityProfile || "CHAT";
+              const overrideTools = Array.isArray(agent.tools) ? agent.tools : [];
 
               return `
                 <article
@@ -1152,14 +1344,17 @@ function renderAgentManager() {
                   <div class="agent-model" data-label="模型">
                     ${escapeHtml(agent.modelId || "未配置")}
                   </div>
-                  <div class="agent-tools" data-label="工具">
-                    ${
-                      tools.length
-                        ? tools
-                            .map((tool) => `<span class="tool-pill">${escapeHtml(tool)}</span>`)
-                            .join("")
-                        : '<span class="muted-text">无</span>'
-                    }
+                  <div class="agent-mode" data-label="模式">
+                    <span
+                      class="mode-pill"
+                      title="${escapeHtml(capabilityProfileDescription(capabilityProfile))}"
+                    >${escapeHtml(capabilityProfileLabel(capabilityProfile))}</span>
+                    ${overrideTools
+                      .map(
+                        (tool) =>
+                          `<span class="tool-pill" title="高级覆盖：${escapeHtml(tool)}">${escapeHtml(toolDisplayName(tool))}</span>`,
+                      )
+                      .join("")}
                   </div>
                   <div class="agent-time" data-label="更新时间">
                     ${escapeHtml(formatSessionTime(agent.updateTime || agent.createTime))}
@@ -1251,6 +1446,14 @@ function renderWorkspace() {
             ${svgIcon("key", 17)}
             <span>API 设置</span>
           </button>
+          <button
+            class="sidebar-nav-item ${state.view === "tools" ? "active" : ""}"
+            type="button"
+            data-action="show-tools"
+          >
+            ${svgIcon("tool", 17)}
+            <span>工具</span>
+          </button>
         </nav>
         ${
           state.view === "chat"
@@ -1296,7 +1499,8 @@ function renderWorkspace() {
                 <div class="session-list agent-quick-list">${renderAgentQuickList()}</div>
               </section>
             `
-              : `
+              : state.view === "apiKeys"
+                ? `
               <section class="sidebar-section">
                 <div class="sidebar-section-header">
                   <span class="sidebar-section-title">API 密钥</span>
@@ -1309,6 +1513,14 @@ function renderWorkspace() {
                   >${svgIcon("plus", 18)}</button>
                 </div>
                 <div class="session-list agent-quick-list">${renderApiKeyQuickList()}</div>
+              </section>
+            `
+                : `
+              <section class="sidebar-section">
+                <div class="sidebar-section-header">
+                  <span class="sidebar-section-title">工具</span>
+                </div>
+                <div class="session-list agent-quick-list">${renderToolQuickList()}</div>
               </section>
             `
         }
@@ -1367,7 +1579,14 @@ function renderWorkspace() {
                     <p>${state.agents.length} 个 Agent</p>
                   </div>
                 `
-                  : `
+                  : state.view === "tools"
+                    ? `
+                  <div class="workspace-title always-visible">
+                    <h1>工具</h1>
+                    <p>${state.toolDefinitions.length} 个可用工具</p>
+                  </div>
+                `
+                    : `
                   <div class="workspace-title always-visible">
                     <h1>API 设置</h1>
                     <p>${state.apiKeys.length} 个 API 密钥</p>
@@ -1474,7 +1693,9 @@ function renderWorkspace() {
             `
             : state.view === "agents"
               ? renderAgentManager()
-              : renderApiKeyManager()
+              : state.view === "apiKeys"
+                ? renderApiKeyManager()
+                : renderToolManager()
         }
       </main>
     </div>
@@ -1501,9 +1722,15 @@ function renderAgentEditorModal() {
       state.apiKeys.find((apiKey) => apiKey.enabled !== false)?.id ||
       "",
     modelId: agent?.modelId || "",
+    capabilityProfile: agent?.capabilityProfile || "CHAT",
   };
-  const toolNames = Array.from(new Set(["weather", "file", ...(agent?.tools || [])]));
   const selectedTools = new Set(agent?.tools || []);
+  const availableTools = state.toolDefinitions.length
+    ? state.toolDefinitions
+    : [
+        { id: "weather", name: "天气查询", description: "查询指定城市的天气信息", methods: [] },
+        { id: "file", name: "文件操作", description: "在受限目录内读写文本文件", methods: [] },
+      ];
   const enabledApiKeys = state.apiKeys.filter((apiKey) => apiKey.enabled !== false);
 
   return `
@@ -1564,6 +1791,21 @@ function renderAgentEditorModal() {
                   <input id="agent-model" name="modelId" maxlength="120" value="${escapeHtml(values.modelId)}" placeholder="gpt-4o-mini" required />
                 </div>
               </div>
+              <div class="field">
+                <label for="agent-capability">能力模式</label>
+                <select id="agent-capability" name="capabilityProfile">
+                  ${CAPABILITY_PROFILES
+                    .map(
+                      (profile) => `
+                        <option value="${profile.id}" ${profile.id === values.capabilityProfile ? "selected" : ""}>
+                          ${escapeHtml(profile.name)} · ${escapeHtml(profile.description)}
+                        </option>
+                      `,
+                    )
+                    .join("")}
+                </select>
+                <p class="form-hint">模式决定运行时自动提供的工具，普通场景无需手工绑定。</p>
+              </div>
               ${
                 enabledApiKeys.length
                   ? ""
@@ -1585,18 +1827,28 @@ function renderAgentEditorModal() {
 
             <section class="agent-form-section">
               <h3 class="agent-form-section-title">工具</h3>
-              <div class="tool-option-grid">
-                ${toolNames
-                  .map(
-                    (tool) => `
-                      <label class="tool-option">
-                        <input type="checkbox" name="tools" value="${escapeHtml(tool)}" ${selectedTools.has(tool) ? "checked" : ""} />
-                        <span>${escapeHtml(tool)}</span>
-                      </label>
-                    `,
-                  )
-                  .join("")}
-              </div>
+              <details class="advanced-tools">
+                <summary>高级工具覆盖（${selectedTools.size} 项已选）</summary>
+                <p class="form-hint">能力模式已自动提供默认工具，这里只在需要额外工具时勾选。</p>
+                <div class="tool-option-grid">
+                  ${availableTools
+                    .map(
+                      (tool) => `
+                        <label class="tool-option tool-option-detailed">
+                          <input type="checkbox" name="tools" value="${escapeHtml(tool.id)}" ${selectedTools.has(tool.id) ? "checked" : ""} />
+                          <span>
+                            <strong>${escapeHtml(tool.name || tool.id)}</strong>
+                            <small>${escapeHtml(tool.description || tool.id)}</small>
+                          </span>
+                        </label>
+                      `,
+                    )
+                    .join("")}
+                </div>
+              </details>
+              <p class="form-hint" id="agent-effective-tools">当前生效工具：${escapeHtml(
+                effectiveToolHint(values.capabilityProfile, selectedTools),
+              )}</p>
             </section>
           </div>
           <div class="modal-footer agent-editor-footer">
@@ -1764,6 +2016,87 @@ function renderDeleteApiKeyModal() {
   `;
 }
 
+function buildToolExampleArguments(method) {
+  const example = {};
+  (method?.parameters || []).forEach((parameter) => {
+    const type = String(parameter.type || "").toLowerCase();
+    if (type.includes("string") || type.includes("char")) {
+      example[parameter.name] = "";
+    } else if (type.includes("bool")) {
+      example[parameter.name] = false;
+    } else if (
+      type.includes("int") ||
+      type.includes("long") ||
+      type.includes("short") ||
+      type.includes("byte") ||
+      type.includes("double") ||
+      type.includes("float")
+    ) {
+      example[parameter.name] = 0;
+    } else {
+      example[parameter.name] = null;
+    }
+  });
+  return JSON.stringify(example, null, 2);
+}
+
+function renderToolTestModal() {
+  const tool = toolDefinitionById(state.modal?.toolId);
+  const method = tool?.methods?.find((item) => item.name === state.modal?.methodName);
+  const result = state.modal?.result;
+
+  return `
+    <div class="modal-backdrop agent-editor-backdrop" data-modal-backdrop>
+      <section class="modal agent-editor-modal tool-test-modal" role="dialog" aria-modal="true" aria-labelledby="tool-test-title">
+        <div class="modal-header">
+          <div>
+            <h2 class="modal-title" id="tool-test-title">测试 ${escapeHtml(method?.name || "工具方法")}</h2>
+            <p class="modal-subtitle">${escapeHtml(tool?.name || state.modal?.toolId || "工具")} · ${escapeHtml(state.modal?.toolId || "")}</p>
+          </div>
+          <button class="icon-button" type="button" data-action="close-modal" aria-label="关闭">
+            ${svgIcon("x", 18)}
+          </button>
+        </div>
+        <form id="tool-test-form">
+          <div class="modal-body agent-editor-body">
+            <section class="agent-form-section">
+              <h3 class="agent-form-section-title">调用参数</h3>
+              <p class="form-hint">${escapeHtml(method?.description || "输入 JSON 对象后执行工具方法。")}</p>
+              <div class="field">
+                <label for="tool-test-arguments">Arguments JSON</label>
+                <textarea id="tool-test-arguments" name="arguments" spellcheck="false" required>${escapeHtml(buildToolExampleArguments(method))}</textarea>
+              </div>
+            </section>
+            ${
+              result
+                ? `
+                  <section class="agent-form-section">
+                    <h3 class="agent-form-section-title">执行结果</h3>
+                    <div class="tool-test-result ${result.success ? "success" : "error"}">
+                      <div class="tool-test-result-meta">
+                        <span>${result.success ? "执行成功" : "执行失败"}</span>
+                        <span>${Number(result.latencyMs || 0)} ms</span>
+                      </div>
+                      <pre>${escapeHtml(result.success ? result.resultText : result.errorMessage)}</pre>
+                    </div>
+                  </section>
+                `
+                : ""
+            }
+          </div>
+          <div class="modal-footer agent-editor-footer">
+            <button class="ghost-button" type="button" data-action="close-modal">关闭</button>
+            <button class="primary-button" type="submit" ${state.toolBusy ? "disabled" : ""}>
+              ${state.toolBusy ? '<span class="button-spinner"></span>' : svgIcon("send", 15)}
+              <span>执行</span>
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  `;
+}
+
 function renderModal() {
   if (!state.modal) {
     return "";
@@ -1775,6 +2108,10 @@ function renderModal() {
 
   if (state.modal.type === "delete-api-key") {
     return renderDeleteApiKeyModal();
+  }
+
+  if (state.modal.type === "tool-test") {
+    return renderToolTestModal();
   }
 
   if (state.modal.type === "agent-editor") {
@@ -1968,14 +2305,16 @@ async function refreshWorkspace({ render = true, quiet = false } = {}) {
   }
 
   try {
-    const [agents, sessions, apiKeys] = await Promise.all([
+    const [agents, sessions, apiKeys, tools] = await Promise.all([
       apiRequest("/agent/list"),
       apiRequest("/session/list"),
       apiRequest("/apikey/list"),
+      apiRequest("/tool/list"),
     ]);
 
     state.agents = Array.isArray(agents) ? agents : [];
     state.apiKeys = Array.isArray(apiKeys) ? apiKeys : [];
+    state.toolDefinitions = Array.isArray(tools) ? tools : [];
     const agentIds = new Set(state.agents.map((agent) => agent.id));
     state.sessions = (Array.isArray(sessions) ? sessions : []).filter((session) =>
       agentIds.has(session.agentId),
@@ -2208,6 +2547,7 @@ async function saveAgent(form) {
       welcomeMessage: String(formData.get("welcomeMessage") || "").trim() || null,
       apiKeyId: String(formData.get("apiKeyId") || "").trim(),
       modelId: String(formData.get("modelId") || "").trim(),
+      capabilityProfile: String(formData.get("capabilityProfile") || "CHAT").trim(),
       tools: formData.getAll("tools").map(String),
     };
     if (!payload.apiKeyId) {
@@ -2629,7 +2969,7 @@ async function handleLogin(form) {
 }
 
 function switchView(view) {
-  state.view = view === "agents" || view === "apiKeys" ? view : "chat";
+  state.view = view === "agents" || view === "apiKeys" || view === "tools" ? view : "chat";
   state.sidebarOpen = false;
   renderWorkspace();
 }
@@ -2664,6 +3004,69 @@ function openDeleteApiKeyModal(apiKeyId) {
     apiKeyId,
   };
   renderWorkspace();
+}
+
+function openToolTestModal(toolId, methodName) {
+  const tool = toolDefinitionById(toolId);
+  const method = tool?.methods?.find((item) => item.name === methodName) || tool?.methods?.[0];
+  if (!tool || !method) {
+    showToast("error", "无法测试工具", "工具方法不存在或工具列表尚未加载。");
+    return;
+  }
+  state.modal = {
+    type: "tool-test",
+    toolId: tool.id,
+    methodName: method.name,
+    result: null,
+  };
+  renderWorkspace();
+}
+
+async function runToolTest(form) {
+  let argumentsValue;
+  try {
+    const raw = String(new FormData(form).get("arguments") || "").trim();
+    argumentsValue = raw ? JSON.parse(raw) : {};
+    if (!argumentsValue || Array.isArray(argumentsValue) || typeof argumentsValue !== "object") {
+      throw new Error("Arguments 必须是 JSON 对象");
+    }
+  } catch (error) {
+    showToast("error", "参数格式错误", error.message);
+    return;
+  }
+
+  state.toolBusy = true;
+  renderWorkspace();
+  try {
+    const result = await apiRequest("/tool/test", {
+      method: "POST",
+      body: {
+        toolId: state.modal?.toolId,
+        methodName: state.modal?.methodName,
+        arguments: argumentsValue,
+        sessionId: state.activeSessionId || null,
+      },
+    });
+    state.modal = {
+      ...state.modal,
+      result,
+    };
+    showToast(
+      result.success ? "success" : "error",
+      result.success ? "工具执行成功" : "工具执行失败",
+      result.success ? `${result.latencyMs} ms` : result.errorMessage,
+    );
+  } catch (error) {
+    if (error.code === "401") {
+      clearAuth();
+      renderLogin(error.message);
+      return;
+    }
+    showToast("error", "工具执行失败", error.message);
+  } finally {
+    state.toolBusy = false;
+    renderWorkspace();
+  }
 }
 
 async function chatWithAgent(agentId) {
@@ -2751,6 +3154,12 @@ app.addEventListener("submit", async (event) => {
     return;
   }
 
+  if (form.id === "tool-test-form") {
+    event.preventDefault();
+    await runToolTest(form);
+    return;
+  }
+
   if (form.id === "composer-form") {
     event.preventDefault();
     const formData = new FormData(form);
@@ -2774,6 +3183,8 @@ app.addEventListener("click", async (event) => {
   const agentId = button.dataset.agentId;
   const apiKeyId = button.dataset.apiKeyId;
   const messageId = button.dataset.messageId;
+  const toolId = button.dataset.toolId;
+  const methodName = button.dataset.methodName;
 
   if (action === "select-session") {
     await selectSession(sessionId);
@@ -2791,6 +3202,10 @@ app.addEventListener("click", async (event) => {
     switchView("agents");
   } else if (action === "show-api-keys") {
     switchView("apiKeys");
+  } else if (action === "show-tools") {
+    switchView("tools");
+  } else if (action === "test-tool") {
+    openToolTestModal(toolId, methodName);
   } else if (action === "new-agent") {
     openAgentEditor();
   } else if (action === "edit-agent") {
@@ -2836,8 +3251,29 @@ app.addEventListener("click", async (event) => {
 app.addEventListener("change", async (event) => {
   if (event.target.matches("[data-agent-select]")) {
     await selectAgent(event.target.value);
+    return;
+  }
+
+  const agentForm = event.target.closest("#agent-form");
+  if (
+    agentForm &&
+    (event.target.name === "capabilityProfile" || event.target.name === "tools")
+  ) {
+    updateEffectiveToolHint(agentForm);
   }
 });
+
+/** 切换能力模式或勾选覆盖工具时，同步表单里的生效工具提示 */
+function updateEffectiveToolHint(form) {
+  const hint = form.querySelector("#agent-effective-tools");
+  if (!hint) {
+    return;
+  }
+  const formData = new FormData(form);
+  const profile = String(formData.get("capabilityProfile") || "CHAT");
+  const selected = new Set(formData.getAll("tools").map(String));
+  hint.textContent = `当前生效工具：${effectiveToolHint(profile, selected)}`;
+}
 
 app.addEventListener("input", (event) => {
   if (event.target.id === "composer-input") {

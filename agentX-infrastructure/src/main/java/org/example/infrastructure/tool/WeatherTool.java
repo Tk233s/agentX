@@ -1,7 +1,5 @@
 package org.example.infrastructure.tool;
 
-import org.springframework.stereotype.Component;
-
 import java.util.HashMap;
 import java.util.Map;
 
@@ -18,7 +16,10 @@ import java.util.Map;
  * 4. Spring AI 检测到 tool_use，自动调用这个方法，拿到返回值
  * 5. 返回值再发回 LLM，LLM 基于结果生成最终回复
  */
-@Component
+@AgentTool(
+        value = "weather",
+        name = "天气查询",
+        description = "查询指定城市的模拟实时天气信息，用于演示模型 Function Calling。")
 public class WeatherTool {
 
     /**

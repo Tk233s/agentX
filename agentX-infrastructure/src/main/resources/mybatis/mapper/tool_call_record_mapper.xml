@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.example.infrastructure.dao.IToolCallRecordDao">
+
+    <insert id="insert" parameterType="org.example.infrastructure.dao.po.ToolCallRecordPO">
+        INSERT INTO tool_call_record
+            (id, tool_id, method_name, user_id, session_id, arguments_json, result_text,
+             success, error_message, latency_ms, created_at)
+        VALUES
+            (#{id}, #{toolId}, #{methodName}, #{userId}, #{sessionId}, #{argumentsJson}, #{resultText},
+             #{success}, #{errorMessage}, #{latencyMs}, #{createdAt})
+    </insert>
+
+    <select id="queryBySessionIdAndUserId" resultType="org.example.infrastructure.dao.po.ToolCallRecordPO">
+        SELECT id, tool_id, method_name, user_id, session_id, arguments_json, result_text,
+               success, error_message, latency_ms, created_at
+        FROM tool_call_record
+        WHERE session_id = #{sessionId}
+          AND user_id = #{userId}
+        ORDER BY created_at DESC
+        LIMIT #{limit}
+    </select>
+
+</mapper>

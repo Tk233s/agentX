@@ -1,7 +1,6 @@
 package org.example.infrastructure.tool;
 
 import org.checkerframework.checker.units.qual.C;
-import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -24,7 +23,10 @@ import java.time.format.DateTimeFormatter;
  * - 限制了只能操作指定目录（如工作桌面、工作目录），防止 LLM 乱删系统文件
  * - 路径校验防止目录遍历攻击（../ 跳到上级目录）
  */
-@Component
+@AgentTool(
+        value = "file",
+        name = "文件操作",
+        description = "在受限工作目录内创建、读取、追加文本文件或列出目录内容。")
 public class FileTool {
 
     /**

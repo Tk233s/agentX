@@ -35,7 +35,10 @@ public class AgentRes {
     /** 模型ID */
     private String modelId;
 
-    /** 启用的工具名称列表 */
+    /** 能力模式 */
+    private String capabilityProfile;
+
+    /** 高级工具覆盖列表 */
     private java.util.List<String> tools;
 
     /** 智能体状态 */

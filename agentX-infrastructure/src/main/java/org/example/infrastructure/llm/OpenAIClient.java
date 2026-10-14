@@ -21,11 +21,14 @@ import org.springframework.ai.model.SimpleApiKey;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.api.OpenAiApi;
+import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Component
 public class OpenAIClient implements LLMPort {
@@ -40,12 +43,6 @@ public class OpenAIClient implements LLMPort {
 
     @Override
     public LLMResult call(LLMEntity llmEntity) {
-
-        // 从 ToolRegistry 取出该 Agent 配置的工具实例
-        System.out.println("[DEBUG] LLMEntity.tools = " + llmEntity.getTools());
-        List<Object> tools = toolRegistry.getTools(llmEntity.getTools());
-        System.out.println("[DEBUG] ToolRegistry 返回工具数 = " + tools.size());
-
         // 构建基础 ChatClient
         ChatClient baseClient = buildChatClient(llmEntity.getModel(),
                                                   llmEntity.getApiKey(),
@@ -55,14 +52,7 @@ public class OpenAIClient implements LLMPort {
         // 组装消息并调用
         //构建提示词
         var promptSpec = baseClient.prompt(buildPrompt(llmEntity.getSystemPrompt(), llmEntity.getMessages()));
-        // Spring AI 1.0.0 使用 .tools() 在调用时动态注册工具
-        // 如果 tools 为空，不传 .tools()，走纯对话
-        if (!tools.isEmpty()) {
-            System.out.println("[DEBUG] 注册工具数：" + tools.size() + "，类型：" + tools.stream().map(t -> t.getClass().getSimpleName()).toList());
-            promptSpec = promptSpec.tools(tools.toArray(new Object[0]));
-        } else {
-            System.out.println("[DEBUG] 无工具注册");
-        }
+        promptSpec = attachTools(promptSpec, llmEntity);
 
         ChatResponse response = promptSpec.call().chatResponse();
 
@@ -76,22 +66,39 @@ public class OpenAIClient implements LLMPort {
 
     @Override
     public Flux<LLMStreamChunk> stream(LLMEntity llmEntity) {
-
-        List<Object> tools = toolRegistry.getTools(llmEntity.getTools());
-
         ChatClient baseClient = buildChatClient(llmEntity.getModel(),
                                                   llmEntity.getApiKey(),
                                                   llmEntity.getBaseUrl(),
                                                   llmEntity.getMaxTokens());
 
         var promptSpec = baseClient.prompt(buildPrompt(llmEntity.getSystemPrompt(), llmEntity.getMessages()));
-        if (!tools.isEmpty()) {
-            promptSpec = promptSpec.tools(tools.toArray(new Object[0]));
-        }
+        promptSpec = attachTools(promptSpec, llmEntity);
 
         return promptSpec.stream()
                 .chatResponse()
                 .map(this::toStreamChunk);
+    }
+
+    /**
+     * 把 Agent 绑定的工具转换为 Spring AI ToolCallback，并附带会话上下文。
+     */
+    private ChatClient.ChatClientRequestSpec attachTools(
+            ChatClient.ChatClientRequestSpec promptSpec,
+            LLMEntity llmEntity) {
+        List<ToolCallback> toolCallbacks = toolRegistry.getToolCallbacks(llmEntity.getTools());
+        if (toolCallbacks.isEmpty()) {
+            return promptSpec;
+        }
+
+        promptSpec = promptSpec.toolCallbacks(toolCallbacks);
+        Map<String, Object> toolContext = new HashMap<>();
+        if (llmEntity.getSessionId() != null && !llmEntity.getSessionId().isBlank()) {
+            toolContext.put("sessionId", llmEntity.getSessionId());
+        }
+        if (llmEntity.getUserId() != null && !llmEntity.getUserId().isBlank()) {
+            toolContext.put("userId", llmEntity.getUserId());
+        }
+        return toolContext.isEmpty() ? promptSpec : promptSpec.toolContext(toolContext);
     }
 
     /**

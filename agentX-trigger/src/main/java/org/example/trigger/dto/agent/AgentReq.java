@@ -39,6 +39,9 @@ public class AgentReq {
     /** 模型ID */
     private String modelId;
 
-    /** 启用的工具名称列表，如 ["weather", "file"] */
+    /** 能力模式：CHAT、CODE_READONLY、CODE、RESEARCH、CUSTOM */
+    private String capabilityProfile;
+
+    /** 高级工具覆盖列表，普通场景不需要填写 */
     private java.util.List<String> tools;
 }

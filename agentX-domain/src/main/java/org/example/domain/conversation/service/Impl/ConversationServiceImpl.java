@@ -23,6 +23,7 @@ import org.example.domain.session.model.entity.SessionEntity;
 import org.example.domain.session.model.valobj.SessionMemory;
 import org.example.domain.session.model.valobj.SessionTokenBudget;
 import org.example.domain.session.service.ISessionDomainService;
+import org.example.domain.tool.adapter.port.ToolRuntimePort;
 import org.example.types.enums.ResponseCode;
 import org.example.types.exception.AppException;
 import org.slf4j.Logger;
@@ -91,6 +92,9 @@ public class ConversationServiceImpl implements IConversationService {
 
     @Autowired
     private ContextSummaryPolicyPort contextSummaryPolicyPort;
+
+    @Autowired
+    private ToolRuntimePort toolRuntimePort;
 
     /**
      * 执行一次非流式对话：准备上下文，调用模型，并保存回复与本次 Token 消耗。
@@ -368,7 +372,7 @@ public class ConversationServiceImpl implements IConversationService {
                     tokenLimitExceededMessage(tokenBudget));
         }
 
-        // 7. 组装 LLMEntity（含工具装填：从 Agent 配置取工具名列表传给基础设施层）
+        // 7. 组装 LLMEntity（工具装填：能力模式默认工具 + Agent 高级覆盖项，由工具运行时统一解析）
         LLMEntity llmEntity = LLMEntity.builder()
                 .model(agent.getModelId())
                 .apiKey(apiKey.getApiKey())
@@ -376,7 +380,11 @@ public class ConversationServiceImpl implements IConversationService {
                 .provider(apiKey.getProvider())
                 .systemPrompt(composeSystemPrompt(agent.getSystemPrompt(), context.summary()))
                 .messages(context.messages())
-                .tools(agent.getTools())  // ← 装填工具：Agent 配置的工具名列表
+                .tools(toolRuntimePort.resolveToolIds(
+                        agent.getCapabilityProfile(),
+                        agent.getTools()))
+                .sessionId(sessionId)
+                .userId(userId)
                 .build();
 
         return new PreparedConversation(llmEntity, tokenBudget);
