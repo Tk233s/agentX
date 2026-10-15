@@ -37,7 +37,7 @@ public class AgentPO {
     /** 能力模式：CHAT、CODE_READONLY、CODE、RESEARCH、CUSTOM */
     private String capabilityProfile;
 
-    /** 工具名称列表（JSON 数组字符串）：如 ["weather", "file"] */
+    /** 工具名称列表（JSON 数组字符串）：如 ["weather", "file-read"] */
     private String toolsJson;
 
     /** 智能体状态：1-启用，0-禁用 */

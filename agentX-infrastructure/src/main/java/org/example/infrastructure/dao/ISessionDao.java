@@ -25,6 +25,8 @@ public interface ISessionDao {
 
     int incrementUsedTokens(@Param("id") String id, @Param("tokens") long tokens);
 
+    int updatePermissionMode(@Param("id") String id, @Param("permissionMode") String permissionMode);
+
     int updateMemory(
             @Param("id") String id,
             @Param("expectedThroughMessageId") String expectedThroughMessageId,

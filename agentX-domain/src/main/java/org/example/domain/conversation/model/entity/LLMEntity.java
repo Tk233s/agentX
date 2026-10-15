@@ -27,6 +27,14 @@ public class LLMEntity {
     private String sessionId;
     private String userId;
 
+    /**
+     * 当前会话的权限档（如 READ_ONLY / FULL）。
+     *
+     * 工具清单已按该权限收窄过一遍，这里再传给工具运行时，
+     * 让执行点能独立复核一次：清单层是"模型看不到"，这里是"就算被调用也执行不了"。
+     */
+    private String permissionMode;
+
     private String systemPrompt;
     private List<MessageEntity> messages;
 

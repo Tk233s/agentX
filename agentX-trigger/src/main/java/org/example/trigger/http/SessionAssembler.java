@@ -15,7 +15,8 @@ public class SessionAssembler {
                 req.getAgentId(),
                 userId,
                 req.getTitle(),
-                req.getTokenLimit());
+                req.getTokenLimit(),
+                req.getPermissionMode());
     }
 
     /** 领域实体 -> 出参 */
@@ -27,6 +28,7 @@ public class SessionAssembler {
         res.setUserId(entity.getUserId());
         res.setTokenLimit(entity.getTokenLimit());
         res.setUsedTokens(entity.getUsedTokens());
+        res.setPermissionMode(entity.getPermissionMode());
         res.setCreateTime(entity.getCreatedAt());
         res.setUpdateTime(entity.getUpdatedAt());
         return res;

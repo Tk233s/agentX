@@ -11,6 +11,7 @@ import org.example.domain.tool.model.valobj.ToolMethodDefinition;
 import org.example.domain.tool.model.valobj.ToolParameterDefinition;
 import org.example.types.enums.AgentCapabilityProfile;
 import org.example.types.enums.ResponseCode;
+import org.example.types.enums.SessionPermissionMode;
 import org.example.types.exception.AppException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -85,27 +86,43 @@ public class ToolRegistry implements ToolRuntimePort {
      * 能力模式到默认工具的映射。
      *
      * 这里只声明"模式自带什么工具"，不涉及 Agent 具体配置；
-     * CODE_READONLY 暂时不提供 file，因为当前 file 工具包含写入方法，
-     * 等文件工具拆分成只读/写入两组后再接入。
+     * 文件工具已拆成 file-read 与 file-write 两个 ID，
+     * 因此 CODE_READONLY 只挂读取组，"能读不能写"不需要再退化成空列表。
      * RESEARCH 等知识库检索工具落地后再补充 knowledge_search。
      */
     private static List<String> defaultToolIds(AgentCapabilityProfile profile) {
         return switch (profile) {
             case CHAT, RESEARCH, CUSTOM -> List.of();
-            case CODE -> List.of("file");
-            case CODE_READONLY -> List.of();
+            case CODE -> List.of("file-read", "file-write");
+            case CODE_READONLY -> List.of("file-read");
         };
     }
 
     /**
      * 解析生效工具：模式默认工具在前，显式覆盖项在后，去重且忽略空值。
+     *
+     * 会话权限为只读时，剔除所有声明了副作用的工具。
+     * 收窄只做减法，因此会话权限永远无法突破 Agent 自身的能力边界。
      */
     @Override
-    public List<String> resolveToolIds(String capabilityProfile, List<String> explicitToolIds) {
+    public List<String> resolveToolIds(
+            String capabilityProfile,
+            List<String> explicitToolIds,
+            String permissionMode) {
         AgentCapabilityProfile profile = AgentCapabilityProfile.parse(capabilityProfile);
+        SessionPermissionMode mode = SessionPermissionMode.parse(permissionMode);
         Set<String> resolved = new LinkedHashSet<>(defaultToolIds(profile));
         resolved.addAll(normalizeToolIds(explicitToolIds));
+        if (mode == SessionPermissionMode.READ_ONLY) {
+            resolved.removeIf(this::hasSideEffect);
+        }
         return List.copyOf(resolved);
+    }
+
+    /** 工具是否声明了副作用。未注册的 ID 交给 validateBindings 报错，这里不做判断。 */
+    private boolean hasSideEffect(String toolId) {
+        RegisteredTool registeredTool = tools.get(toolId);
+        return registeredTool != null && registeredTool.mutating();
     }
 
     /**
@@ -197,8 +214,13 @@ public class ToolRegistry implements ToolRuntimePort {
      * 获取可直接传给 Spring AI ChatClient 的工具回调。
      *
      * 每个回调都会包装一层审计逻辑，模型实际触发工具时也能记录参数、结果和耗时。
+     *
+     * permissionMode 除参与回调包装外，还会在执行点再判一次：
+     * 清单层已经按权限剔除过工具，这里是第二道防线，
+     * 保证"只读会话不会被写入"这件事不只依赖调用方是否正确组装了工具列表。
      */
-    public List<ToolCallback> getToolCallbacks(List<String> toolIds) {
+    public List<ToolCallback> getToolCallbacks(List<String> toolIds, String permissionMode) {
+        boolean readOnly = SessionPermissionMode.parse(permissionMode) == SessionPermissionMode.READ_ONLY;
         List<ToolCallback> callbacks = new ArrayList<>();
         for (String toolId : normalizeToolIds(toolIds)) {
             RegisteredTool registeredTool = tools.get(toolId);
@@ -206,7 +228,11 @@ public class ToolRegistry implements ToolRuntimePort {
                 continue;
             }
             for (ToolCallback callback : registeredTool.callbacks()) {
-                callbacks.add(new RecordingToolCallback(toolId, callback));
+                callbacks.add(new RecordingToolCallback(
+                        toolId,
+                        callback,
+                        readOnly,
+                        registeredTool.mutating()));
             }
         }
         return callbacks;
@@ -255,7 +281,8 @@ public class ToolRegistry implements ToolRuntimePort {
                 definition,
                 bean,
                 methodsByName,
-                List.of(callbacks)));
+                List.of(callbacks),
+                annotation.mutating()));
     }
 
     private ToolMethodDefinition toMethodDefinition(Method method) {
@@ -462,10 +489,20 @@ public class ToolRegistry implements ToolRuntimePort {
 
         private final String toolId;
         private final ToolCallback delegate;
+        /** 本次会话是否只读。 */
+        private final boolean readOnly;
+        /** 该工具是否声明了副作用。 */
+        private final boolean mutating;
 
-        private RecordingToolCallback(String toolId, ToolCallback delegate) {
+        private RecordingToolCallback(
+                String toolId,
+                ToolCallback delegate,
+                boolean readOnly,
+                boolean mutating) {
             this.toolId = toolId;
             this.delegate = delegate;
+            this.readOnly = readOnly;
+            this.mutating = mutating;
         }
 
         @Override
@@ -481,6 +518,19 @@ public class ToolRegistry implements ToolRuntimePort {
         @Override
         public String call(String input) {
             long startedAt = System.nanoTime();
+            String denial = describePermissionDenial();
+            if (denial != null) {
+                saveRecord(
+                        toolId,
+                        getToolDefinition().name(),
+                        ToolInvocationContext.empty(),
+                        input,
+                        null,
+                        false,
+                        denial,
+                        elapsedMillis(startedAt));
+                return denial;
+            }
             try {
                 String result = delegate.call(input);
                 saveRecord(
@@ -511,6 +561,19 @@ public class ToolRegistry implements ToolRuntimePort {
         public String call(String input, ToolContext context) {
             long startedAt = System.nanoTime();
             ToolInvocationContext invocationContext = toInvocationContext(context);
+            String denial = describePermissionDenial();
+            if (denial != null) {
+                saveRecord(
+                        toolId,
+                        getToolDefinition().name(),
+                        invocationContext,
+                        input,
+                        null,
+                        false,
+                        denial,
+                        elapsedMillis(startedAt));
+                return denial;
+            }
             try {
                 String result = delegate.call(input, context);
                 saveRecord(
@@ -537,6 +600,20 @@ public class ToolRegistry implements ToolRuntimePort {
             }
         }
 
+        /**
+         * 只读会话下拒绝执行带副作用的工具。
+         *
+         * 返回 null 表示放行，否则返回一段给模型看的拒绝说明，
+         * 让模型知道这不是"工具坏了"，而是本次会话不允许，从而直接答复用户而不是反复重试。
+         */
+        private String describePermissionDenial() {
+            if (!readOnly || !mutating) {
+                return null;
+            }
+            return "当前会话处于只读模式，具有副作用的工具[" + toolId + "]已被拒绝执行。"
+                    + "请不要重试，直接告知用户需要切换会话权限后再操作。";
+        }
+
         private ToolInvocationContext toInvocationContext(ToolContext context) {
             if (context == null || context.getContext() == null) {
                 return ToolInvocationContext.empty();
@@ -556,6 +633,7 @@ public class ToolRegistry implements ToolRuntimePort {
             ToolDefinition definition,
             Object bean,
             Map<String, Method> methodsByName,
-            List<ToolCallback> callbacks) {
+            List<ToolCallback> callbacks,
+            boolean mutating) {
     }
 }

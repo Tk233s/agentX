@@ -1108,10 +1108,37 @@ textarea:disabled {
 
 .composer-hint {
   overflow: hidden;
+  min-width: 0;
   color: var(--ink-faint);
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.composer-footer-left {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.permission-chip {
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--ink-soft);
+  background: var(--surface-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.permission-chip:hover {
+  color: var(--accent-strong);
+  border-color: var(--accent);
 }
 
 .send-button {

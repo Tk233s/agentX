@@ -21,12 +21,18 @@ public interface ToolRuntimePort {
     List<ToolDefinition> listDefinitions();
 
     /**
-     * 解析某个 Agent 本次实际生效的工具列表。
+     * 解析某次对话实际生效的工具列表。
      *
      * 能力模式决定默认工具，explicitToolIds 作为高级覆盖项叠加，
-     * 两者合并去重后返回，返回结果可直接用于 {@link #validateBindings(List)}。
+     * 两者合并去重后再按会话权限收窄；返回结果可直接用于 {@link #validateBindings(List)}。
+     *
+     * permissionMode 为空表示不按会话权限收窄（例如校验 Agent 自身配置时）。
+     * 权限只会剔除工具，不会新增工具，因此会话无法绕过 Agent 的能力边界。
      */
-    List<String> resolveToolIds(String capabilityProfile, List<String> explicitToolIds);
+    List<String> resolveToolIds(
+            String capabilityProfile,
+            List<String> explicitToolIds,
+            String permissionMode);
 
     /**
      * 校验 Agent 绑定的工具 ID 是否全部存在。

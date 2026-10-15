@@ -372,7 +372,7 @@ public class ConversationServiceImpl implements IConversationService {
                     tokenLimitExceededMessage(tokenBudget));
         }
 
-        // 7. 组装 LLMEntity（工具装填：能力模式默认工具 + Agent 高级覆盖项，由工具运行时统一解析）
+        // 7. 组装 LLMEntity（工具装填：能力模式默认工具 + Agent 高级覆盖项，再按会话权限收窄）
         LLMEntity llmEntity = LLMEntity.builder()
                 .model(agent.getModelId())
                 .apiKey(apiKey.getApiKey())
@@ -382,9 +382,11 @@ public class ConversationServiceImpl implements IConversationService {
                 .messages(context.messages())
                 .tools(toolRuntimePort.resolveToolIds(
                         agent.getCapabilityProfile(),
-                        agent.getTools()))
+                        agent.getTools(),
+                        session.getPermissionMode()))
                 .sessionId(sessionId)
                 .userId(userId)
+                .permissionMode(session.getPermissionMode())
                 .build();
 
         return new PreparedConversation(llmEntity, tokenBudget);

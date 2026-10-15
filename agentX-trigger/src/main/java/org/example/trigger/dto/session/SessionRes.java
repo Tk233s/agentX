@@ -24,6 +24,9 @@ public class SessionRes {
     /** 会话累计已使用Token */
     private Long usedTokens;
 
+    /** 会话权限档：READ_ONLY 只读、FULL 放行 */
+    private String permissionMode;
+
     private LocalDateTime createTime;
 
     private LocalDateTime updateTime;

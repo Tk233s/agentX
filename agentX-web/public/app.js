@@ -472,8 +472,8 @@ function capabilityProfileDescription(profile) {
 /** 与后端 ToolRegistry.defaultToolIds 保持一致，仅用于表单里的生效工具提示 */
 const CAPABILITY_DEFAULT_TOOLS = {
   CHAT: [],
-  CODE_READONLY: [],
-  CODE: ["file"],
+  CODE_READONLY: ["file-read"],
+  CODE: ["file-read", "file-write"],
   RESEARCH: [],
   CUSTOM: [],
 };
@@ -571,6 +571,20 @@ function isSessionTokenExhausted(session) {
     return false;
   }
   return Number(session.usedTokens || 0) >= Number(session.tokenLimit);
+}
+
+/** 会话权限档：与后端 SessionPermissionMode 保持一致 */
+const SESSION_PERMISSION_LABELS = {
+  READ_ONLY: "只读",
+  FULL: "放行",
+};
+
+function sessionPermissionLabel(permissionMode) {
+  return SESSION_PERMISSION_LABELS[permissionMode] || SESSION_PERMISSION_LABELS.FULL;
+}
+
+function nextSessionPermission(permissionMode) {
+  return permissionMode === "READ_ONLY" ? "FULL" : "READ_ONLY";
 }
 
 function applySessionTokenBudget(payload) {
@@ -1660,11 +1674,25 @@ function renderWorkspace() {
                       ${!session || state.chatBusy || sessionTokenLocked ? "disabled" : ""}
                     ></textarea>
                     <div class="composer-footer">
-                      <span class="composer-hint">${
-                        session
-                          ? escapeHtml(`${agent?.name || "Agent"} · ${sessionTokenSummary(session, true)}`)
-                          : "请先创建会话"
-                      }</span>
+                      <div class="composer-footer-left">
+                        <span class="composer-hint">${
+                          session
+                            ? escapeHtml(`${agent?.name || "Agent"} · ${sessionTokenSummary(session, true)}`)
+                            : "请先创建会话"
+                        }</span>
+                        ${
+                          session
+                            ? `
+                              <button
+                                class="permission-chip"
+                                type="button"
+                                data-action="toggle-session-permission"
+                                title="切换本会话权限：只读不挂写工具，放行则全部可用"
+                              >${sessionPermissionLabel(session.permissionMode)}</button>
+                            `
+                            : ""
+                        }
+                      </div>
                       ${
                         state.chatBusy
                           ? `
@@ -1729,7 +1757,8 @@ function renderAgentEditorModal() {
     ? state.toolDefinitions
     : [
         { id: "weather", name: "天气查询", description: "查询指定城市的天气信息", methods: [] },
-        { id: "file", name: "文件操作", description: "在受限目录内读写文本文件", methods: [] },
+        { id: "file-read", name: "文件读取", description: "在受限目录内列出目录、读取文本文件", methods: [] },
+        { id: "file-write", name: "文件写入", description: "在受限目录内创建、覆盖或追加文本文件", methods: [] },
       ];
   const enabledApiKeys = state.apiKeys.filter((apiKey) => apiKey.enabled !== false);
 
@@ -2163,6 +2192,13 @@ function renderModal() {
                   placeholder="留空则不限制"
                 />
               </div>
+              <div class="field">
+                <label for="new-session-permission">会话权限</label>
+                <select id="new-session-permission" name="permissionMode">
+                  <option value="FULL">放行（写工具可用）</option>
+                  <option value="READ_ONLY">只读（不挂写工具）</option>
+                </select>
+              </div>
             </div>
             <div class="modal-footer">
               <button class="ghost-button" type="button" data-action="close-modal">取消</button>
@@ -2427,7 +2463,7 @@ async function selectAgent(agentId) {
   }
 }
 
-async function createSession(agentId, title, tokenLimit) {
+async function createSession(agentId, title, tokenLimit, permissionMode) {
   state.workspaceBusy = true;
   state.modal = null;
   renderWorkspace();
@@ -2439,6 +2475,7 @@ async function createSession(agentId, title, tokenLimit) {
         agentId,
         title: title.trim() || "新会话",
         tokenLimit,
+        permissionMode,
       },
     });
 
@@ -2483,6 +2520,32 @@ async function renameSession(sessionId, title) {
     showToast("error", "重命名失败", error.message);
   } finally {
     state.workspaceBusy = false;
+    renderWorkspace();
+  }
+}
+
+/** 切换当前会话的权限档；只影响本次对话可用到哪一步，不改变 Agent 自身的工具配置。 */
+async function setSessionPermission(permissionMode) {
+  const sessionId = state.activeSessionId;
+  if (!sessionId || !permissionMode) {
+    return;
+  }
+
+  try {
+    const updated = await apiRequest(
+      `/session/permission?id=${encodeURIComponent(sessionId)}&permissionMode=${encodeURIComponent(permissionMode)}`,
+      { method: "POST" },
+    );
+    state.sessions = state.sessions.map((session) => (session.id === updated.id ? updated : session));
+    showToast("success", `本会话权限已切换为${sessionPermissionLabel(updated.permissionMode)}`);
+  } catch (error) {
+    if (error.code === "401") {
+      clearAuth();
+      renderLogin(error.message);
+      return;
+    }
+    showToast("error", "切换失败", error.message);
+  } finally {
     renderWorkspace();
   }
 }
@@ -3125,6 +3188,7 @@ app.addEventListener("submit", async (event) => {
         String(formData.get("agentId") || ""),
         String(formData.get("title") || ""),
         optionalPositiveInteger(formData.get("tokenLimit")),
+        String(formData.get("permissionMode") || ""),
       );
     } catch (error) {
       showToast("error", "创建失败", error.message);
@@ -3226,6 +3290,9 @@ app.addEventListener("click", async (event) => {
     await deleteApiKey(apiKeyId || state.modal?.apiKeyId);
   } else if (action === "stop-generation") {
     stopGeneration();
+  } else if (action === "toggle-session-permission") {
+    const current = state.sessions.find((item) => item.id === state.activeSessionId);
+    await setSessionPermission(nextSessionPermission(current?.permissionMode));
   } else if (action === "copy-message") {
     await copyMessage(messageId);
   } else if (action === "close-modal") {

@@ -56,6 +56,11 @@ public class SessionRepositoryImpl implements SessionRepository {
     }
 
     @Override
+    public int updatePermissionMode(String id, String permissionMode) {
+        return sessionDao.updatePermissionMode(id, permissionMode);
+    }
+
+    @Override
     public int updateMemory(String id, String expectedThroughMessageId, SessionMemory memory) {
         SessionMemory target = memory == null ? SessionMemory.empty() : memory;
         return sessionDao.updateMemory(
@@ -74,6 +79,7 @@ public class SessionRepositoryImpl implements SessionRepository {
         po.setUserId(entity.getUserId());
         po.setTokenLimit(entity.getTokenLimit());
         po.setUsedTokens(entity.getUsedTokens());
+        po.setPermissionMode(entity.getPermissionMode());
         po.setContextSummary(entity.getContextSummary());
         po.setSummaryThroughMessageId(entity.getSummaryThroughMessageId());
         po.setSummaryUpdatedAt(entity.getSummaryUpdatedAt());
@@ -93,6 +99,7 @@ public class SessionRepositoryImpl implements SessionRepository {
         entity.setUserId(po.getUserId());
         entity.setTokenLimit(po.getTokenLimit());
         entity.setUsedTokens(po.getUsedTokens());
+        entity.setPermissionMode(po.getPermissionMode());
         entity.setContextSummary(po.getContextSummary());
         entity.setSummaryThroughMessageId(po.getSummaryThroughMessageId());
         entity.setSummaryUpdatedAt(po.getSummaryUpdatedAt());

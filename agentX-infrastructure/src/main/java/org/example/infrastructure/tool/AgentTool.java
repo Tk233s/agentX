@@ -29,4 +29,10 @@ public @interface AgentTool {
      * 工具的整体说明；为空时由方法说明汇总生成。
      */
     String description() default "";
+
+    /**
+     * 该工具是否会产生副作用（写文件、修改外部状态等）。
+     * 只读会话不会挂载这类工具，因此工具自己声明副作用，权限侧才能可靠地收窄。
+     */
+    boolean mutating() default false;
 }

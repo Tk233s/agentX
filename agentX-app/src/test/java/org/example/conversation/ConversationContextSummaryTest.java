@@ -19,6 +19,7 @@ import org.example.domain.message.service.IMessageDomainService;
 import org.example.domain.session.model.entity.SessionEntity;
 import org.example.domain.session.model.valobj.SessionMemory;
 import org.example.domain.session.service.ISessionDomainService;
+import org.example.domain.tool.adapter.port.ToolRuntimePort;
 import org.example.types.enums.ResponseCode;
 import org.example.types.exception.AppException;
 import org.junit.Test;
@@ -196,6 +197,7 @@ public class ConversationContextSummaryTest {
         TokenEstimatorPort tokenEstimatorPort = mock(TokenEstimatorPort.class);
         ContextWindowPort contextWindowPort = mock(ContextWindowPort.class);
         ContextSummaryPolicyPort contextSummaryPolicyPort = mock(ContextSummaryPolicyPort.class);
+        ToolRuntimePort toolRuntimePort = mock(ToolRuntimePort.class);
 
         String sessionId = "session-1";
         String userId = "user-1";
@@ -239,6 +241,8 @@ public class ConversationContextSummaryTest {
         ReflectionTestUtils.setField(service, "tokenEstimatorPort", tokenEstimatorPort);
         ReflectionTestUtils.setField(service, "contextWindowPort", contextWindowPort);
         ReflectionTestUtils.setField(service, "contextSummaryPolicyPort", contextSummaryPolicyPort);
+        when(toolRuntimePort.resolveToolIds(any(), any(), any())).thenReturn(List.of());
+        ReflectionTestUtils.setField(service, "toolRuntimePort", toolRuntimePort);
 
         return new Fixture(service, sessionDomainService, llmPort, sessionId, userId, session);
     }

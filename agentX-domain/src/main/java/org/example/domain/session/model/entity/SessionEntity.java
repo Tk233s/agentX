@@ -3,6 +3,7 @@ package org.example.domain.session.model.entity;
 import lombok.Data;
 import org.example.domain.session.model.valobj.SessionMemory;
 import org.example.domain.session.model.valobj.SessionTokenBudget;
+import org.example.types.enums.SessionPermissionMode;
 import org.example.types.enums.ResponseCode;
 import org.example.types.exception.AppException;
 
@@ -33,6 +34,9 @@ public class SessionEntity {
     /** 会话累计已使用Token */
     private Long usedTokens;
 
+    /** 会话权限档；READ_ONLY 只挂只读工具，FULL 放行 */
+    private String permissionMode;
+
     /** 较早对话的压缩摘要 */
     private String contextSummary;
 
@@ -52,6 +56,15 @@ public class SessionEntity {
      * 工厂方法：创建新会话
      */
     public static SessionEntity createNew(String agentId, String userId, String title, Long tokenLimit) {
+        return createNew(agentId, userId, title, tokenLimit, null);
+    }
+
+    /**
+     * 工厂方法：创建新会话，并指定权限档。
+     * 权限档为空时按放行处理，保持升级前的行为不变。
+     */
+    public static SessionEntity createNew(
+            String agentId, String userId, String title, Long tokenLimit, String permissionMode) {
         if (tokenLimit != null && tokenLimit <= 0) {
             throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "会话Token上限必须大于0");
         }
@@ -62,6 +75,7 @@ public class SessionEntity {
         session.setTitle(title != null ? title : "新会话");
         session.setTokenLimit(tokenLimit);
         session.setUsedTokens(0L);
+        session.setPermissionMode(SessionPermissionMode.parse(permissionMode).name());
         session.setCreatedAt(LocalDateTime.now());
         session.setUpdatedAt(LocalDateTime.now());
         return session;

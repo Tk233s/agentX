@@ -9,6 +9,7 @@ import org.example.domain.session.model.valobj.SessionMemory;
 import org.example.domain.session.model.valobj.SessionTokenBudget;
 import org.example.domain.session.service.ISessionDomainService;
 import org.example.types.enums.ResponseCode;
+import org.example.types.enums.SessionPermissionMode;
 import org.example.types.exception.AppException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -54,6 +55,21 @@ public class SessionDomainServiceImpl implements ISessionDomainService {
         existing.setTitle(title);
         existing.setUpdatedAt(LocalDateTime.now());
         sessionRepository.update(existing);
+        return existing;
+    }
+
+    /**
+     * 切换会话权限档。
+     * 权限只影响"这次对话允许做到什么程度"，与 Agent 自身的工具配置相互独立。
+     */
+    @Transactional
+    public SessionEntity updatePermissionMode(String id, String userId, String permissionMode) {
+        SessionEntity existing = requireOwnedSession(id, userId);
+        String normalized = SessionPermissionMode.parse(permissionMode).name();
+        if (sessionRepository.updatePermissionMode(id, normalized) == 0) {
+            throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "会话不存在");
+        }
+        existing.setPermissionMode(normalized);
         return existing;
     }
 

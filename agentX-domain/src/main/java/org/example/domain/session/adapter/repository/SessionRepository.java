@@ -43,6 +43,13 @@ public interface SessionRepository {
     int incrementUsedTokens(String id, long tokens);
 
     /**
+     * 更新会话权限档。
+     *
+     * @return 影响行数
+     */
+    int updatePermissionMode(String id, String permissionMode);
+
+    /**
      * 以摘要水位做乐观锁更新，避免并发请求用旧摘要覆盖新摘要。
      *
      * @return 影响行数

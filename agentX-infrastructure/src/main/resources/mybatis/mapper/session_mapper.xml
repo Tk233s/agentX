@@ -4,11 +4,11 @@
 
     <insert id="insert" parameterType="org.example.infrastructure.dao.po.SessionPO">
         INSERT INTO session
-            (id, title, agent_id, user_id, token_limit, used_tokens,
+            (id, title, agent_id, user_id, token_limit, used_tokens, permission_mode,
              context_summary, summary_through_message_id, summary_updated_at,
              created_at, updated_at)
         VALUES
-            (#{id}, #{title}, #{agentId}, #{userId}, #{tokenLimit}, #{usedTokens},
+            (#{id}, #{title}, #{agentId}, #{userId}, #{tokenLimit}, #{usedTokens}, #{permissionMode},
              #{contextSummary}, #{summaryThroughMessageId}, #{summaryUpdatedAt},
              #{createdAt}, #{updatedAt})
     </insert>
@@ -31,6 +31,12 @@
         WHERE id = #{id}
     </update>
 
+    <update id="updatePermissionMode">
+        UPDATE session
+        SET permission_mode = #{permissionMode}
+        WHERE id = #{id}
+    </update>
+
     <update id="updateMemory">
         UPDATE session
         SET context_summary = #{summary},
@@ -41,7 +47,7 @@
     </update>
 
     <select id="queryById" parameterType="java.lang.String" resultType="org.example.infrastructure.dao.po.SessionPO">
-        SELECT id, title, agent_id, user_id, token_limit, used_tokens,
+        SELECT id, title, agent_id, user_id, token_limit, used_tokens, permission_mode,
                context_summary, summary_through_message_id, summary_updated_at,
                created_at, updated_at
         FROM session
@@ -49,7 +55,7 @@
     </select>
 
     <select id="queryByUserId" parameterType="java.lang.String" resultType="org.example.infrastructure.dao.po.SessionPO">
-        SELECT id, title, agent_id, user_id, token_limit, used_tokens,
+        SELECT id, title, agent_id, user_id, token_limit, used_tokens, permission_mode,
                context_summary, summary_through_message_id, summary_updated_at,
                created_at, updated_at
         FROM session

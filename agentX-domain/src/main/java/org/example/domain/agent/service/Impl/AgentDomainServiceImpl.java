@@ -143,10 +143,12 @@ public class AgentDomainServiceImpl implements IAgentDomainService {
     private void validateTools(AgentEntity agent) {
         agent.normalizeTools();
         agent.normalizeCapabilityProfile();
-        // 生效工具 = 能力模式默认工具 + 显式高级覆盖项
+        // 生效工具 = 能力模式默认工具 + 显式高级覆盖项；这里校验的是 Agent 自身配置，
+        // 不传会话权限，避免把某个会话的只读限制误判成 Agent 配置错误
         List<String> effectiveToolIds = toolRuntimePort.resolveToolIds(
                 agent.getCapabilityProfile(),
-                agent.getTools());
+                agent.getTools(),
+                null);
         toolRuntimePort.validateBindings(effectiveToolIds);
     }
 }

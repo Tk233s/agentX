@@ -22,6 +22,11 @@ public interface ISessionDomainService {
     SessionEntity updateSessionTitle(String id, String userId, String title);
 
     /**
+     * 更新会话权限档（只读 / 放行）
+     */
+    SessionEntity updatePermissionMode(String id, String userId, String permissionMode);
+
+    /**
      * 删除会话（级联删除消息由Message仓储负责）
      */
     void deleteSession(String id, String userId);

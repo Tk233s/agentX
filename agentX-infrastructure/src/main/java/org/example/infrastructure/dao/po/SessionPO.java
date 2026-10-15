@@ -28,6 +28,9 @@ public class SessionPO {
     /** 会话累计已使用Token */
     private Long usedTokens;
 
+    /** 会话权限档；READ_ONLY 只挂只读工具，FULL 放行 */
+    private String permissionMode;
+
     /** 较早对话的压缩摘要 */
     private String contextSummary;
 

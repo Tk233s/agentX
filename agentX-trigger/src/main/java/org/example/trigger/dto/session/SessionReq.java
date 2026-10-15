@@ -24,4 +24,7 @@ public class SessionReq {
     /** 会话累计Token上限；为空表示不限制 */
     @Min(value = 1, message = "会话Token上限必须大于0")
     private Long tokenLimit;
+
+    /** 会话权限档：READ_ONLY 只读、FULL 放行；为空时按放行处理 */
+    private String permissionMode;
 }

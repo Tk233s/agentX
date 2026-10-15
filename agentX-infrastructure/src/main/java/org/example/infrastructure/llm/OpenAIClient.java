@@ -85,7 +85,9 @@ public class OpenAIClient implements LLMPort {
     private ChatClient.ChatClientRequestSpec attachTools(
             ChatClient.ChatClientRequestSpec promptSpec,
             LLMEntity llmEntity) {
-        List<ToolCallback> toolCallbacks = toolRegistry.getToolCallbacks(llmEntity.getTools());
+        List<ToolCallback> toolCallbacks = toolRegistry.getToolCallbacks(
+                llmEntity.getTools(),
+                llmEntity.getPermissionMode());
         if (toolCallbacks.isEmpty()) {
             return promptSpec;
         }

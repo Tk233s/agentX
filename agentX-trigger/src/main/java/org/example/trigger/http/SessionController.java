@@ -46,6 +46,18 @@ public class SessionController {
     }
 
     /**
+     * 切换会话权限档（只读 / 放行）
+     */
+    @PostMapping("/permission")
+    public Response<SessionRes> updatePermission(
+            @RequestParam("id") String id,
+            @RequestParam("permissionMode") String permissionMode) {
+        SessionEntity updated = sessionDomainService.updatePermissionMode(
+                id, UserContext.requireCurrentUserId(), permissionMode);
+        return Response.success(SessionAssembler.toRes(updated));
+    }
+
+    /**
      * 删除会话（级联删除消息）
      */
     @PostMapping("/delete")
