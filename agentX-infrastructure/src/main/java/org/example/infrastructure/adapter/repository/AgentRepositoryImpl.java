@@ -68,6 +68,8 @@ public class AgentRepositoryImpl implements AgentRepository {
         po.setCapabilityProfile(agent.getCapabilityProfile());
         // List<String> → JSON 字符串存入数据库
         po.setToolsJson(agent.getTools() != null ? GSON.toJson(agent.getTools()) : null);
+        po.setKnowledgeBaseIdsJson(
+                agent.getKnowledgeBaseIds() != null ? GSON.toJson(agent.getKnowledgeBaseIds()) : null);
         po.setEnabled(agent.getEnabled());
         po.setUserId(agent.getUserId());
         po.setCreatedAt(agent.getCreatedAt());
@@ -93,6 +95,11 @@ public class AgentRepositoryImpl implements AgentRepository {
         // JSON 字符串 → List<String>
         if (po.getToolsJson() != null && !po.getToolsJson().isEmpty()) {
             agent.setTools(GSON.fromJson(po.getToolsJson(), new TypeToken<List<String>>() {}.getType()));
+        }
+        // JSON 字符串 → List<String>
+        if (po.getKnowledgeBaseIdsJson() != null && !po.getKnowledgeBaseIdsJson().isEmpty()) {
+            agent.setKnowledgeBaseIds(
+                    GSON.fromJson(po.getKnowledgeBaseIdsJson(), new TypeToken<List<String>>() {}.getType()));
         }
         agent.setEnabled(po.getEnabled());
         agent.setUserId(po.getUserId());

@@ -3,6 +3,11 @@ spring:
     name: agentX-app
   profiles:
     active: dev
+  servlet:
+    multipart:
+      # 知识库上传的是纯文本资料，20MB 足够，也避免被超大文件拖住请求线程
+      max-file-size: ${UPLOAD_MAX_FILE_SIZE:20MB}
+      max-request-size: ${UPLOAD_MAX_REQUEST_SIZE:20MB}
 
 # 认证过滤器配置；白名单内的接口不需要携带Token
 auth:
@@ -22,3 +27,8 @@ conversation:
       target-ratio: ${CONVERSATION_CONTEXT_SUMMARY_TARGET_RATIO:0.65}
       max-summary-tokens: ${CONVERSATION_CONTEXT_SUMMARY_MAX_TOKENS:8192}
       min-recent-groups: ${CONVERSATION_CONTEXT_SUMMARY_MIN_RECENT_GROUPS:4}
+
+# 知识库配置；上传的原文件按 yyyyMM 分目录落在该目录下
+agentx:
+  rag:
+    upload-dir: ${RAG_UPLOAD_DIR:./data/rag}

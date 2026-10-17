@@ -23,7 +23,8 @@ public class AgentAssembler {
                 req.getApiKeyId(),
                 req.getModelId(),
                 req.getCapabilityProfile(),
-                req.getTools());
+                req.getTools(),
+                req.getKnowledgeBaseIds());
     }
 
     /** 入参 DTO -> 领域实体（更新：仅携带ID与可编辑业务字段，归属/状态/时间戳由领域服务合并保留） */
@@ -39,6 +40,7 @@ public class AgentAssembler {
         agent.setModelId(req.getModelId());
         agent.setCapabilityProfile(req.getCapabilityProfile());
         agent.setTools(req.getTools());
+        agent.setKnowledgeBaseIds(req.getKnowledgeBaseIds());
         return agent;
     }
 
@@ -55,6 +57,7 @@ public class AgentAssembler {
         res.setModelId(entity.getModelId());
         res.setCapabilityProfile(entity.getCapabilityProfile());
         res.setTools(entity.getTools());
+        res.setKnowledgeBaseIds(entity.getKnowledgeBaseIds());
         res.setEnabled(entity.getEnabled());
         res.setCreateTime(entity.getCreatedAt());
         res.setUpdateTime(entity.getUpdatedAt());

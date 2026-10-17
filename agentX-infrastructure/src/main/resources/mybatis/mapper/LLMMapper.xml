@@ -5,11 +5,11 @@
     <insert id="insert" parameterType="org.example.infrastructure.dao.po.AgentPO">
         INSERT INTO agent
             (id, name, avatar, description, system_prompt, welcome_message,
-             api_key_id, model_id, capability_profile, tools_json,
+             api_key_id, model_id, capability_profile, tools_json, knowledge_base_ids,
              enabled, user_id, created_at, updated_at)
         VALUES
             (#{id}, #{name}, #{avatar}, #{description}, #{systemPrompt}, #{welcomeMessage},
-             #{apiKeyId}, #{modelId}, #{capabilityProfile}, #{toolsJson},
+             #{apiKeyId}, #{modelId}, #{capabilityProfile}, #{toolsJson}, #{knowledgeBaseIdsJson},
              #{enabled}, #{userId}, #{createdAt}, #{updatedAt})
     </insert>
 
@@ -24,6 +24,7 @@
             model_id        = #{modelId},
             capability_profile = #{capabilityProfile},
             tools_json      = #{toolsJson},
+            knowledge_base_ids = #{knowledgeBaseIdsJson},
             enabled         = #{enabled},
             user_id         = #{userId},
             updated_at      = #{updatedAt}
@@ -38,6 +39,7 @@
     <select id="queryById" parameterType="java.lang.String" resultType="org.example.infrastructure.dao.po.AgentPO">
         SELECT id, name, avatar, description, system_prompt, welcome_message,
                api_key_id, model_id, capability_profile, tools_json,
+               knowledge_base_ids AS knowledgeBaseIdsJson,
                enabled, user_id, created_at, updated_at
         FROM agent
         WHERE id = #{id}
@@ -46,6 +48,7 @@
     <select id="queryByUserId" parameterType="java.lang.String" resultType="org.example.infrastructure.dao.po.AgentPO">
         SELECT id, name, avatar, description, system_prompt, welcome_message,
                api_key_id, model_id, capability_profile, tools_json,
+               knowledge_base_ids AS knowledgeBaseIdsJson,
                enabled, user_id, created_at, updated_at
         FROM agent
         WHERE user_id = #{userId}

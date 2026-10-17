@@ -44,4 +44,7 @@ public class AgentReq {
 
     /** 高级工具覆盖列表，普通场景不需要填写 */
     private java.util.List<String> tools;
+
+    /** 绑定的知识库ID列表；不填表示该智能体不使用知识库 */
+    private java.util.List<String> knowledgeBaseIds;
 }

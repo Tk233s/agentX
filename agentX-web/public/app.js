@@ -9,6 +9,7 @@ const toastRegion = document.querySelector("#toast-region");
 const icons = {
   alert: '<circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/>',
   bot: '<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>',
+  book: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>',
   check: '<path d="M20 6 9 17l-5-5"/>',
   chevronDown: '<path d="m6 9 6 6 6-6"/>',
   copy: '<rect width="14" height="14" x="8" y="8" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
@@ -35,6 +36,9 @@ const state = {
   agents: [],
   apiKeys: [],
   toolDefinitions: [],
+  knowledgeBases: [],
+  knowledgeDocuments: [],
+  knowledgeDocumentsFor: "",
   sessions: [],
   messages: [],
   activeAgentId: sessionStorage.getItem(AGENT_KEY) || "",
@@ -46,6 +50,7 @@ const state = {
   agentBusy: false,
   apiKeyBusy: false,
   toolBusy: false,
+  knowledgeBusy: false,
   messagesBusy: false,
   chatBusy: false,
   sidebarOpen: false,
@@ -269,6 +274,55 @@ async function apiRequest(path, options = {}) {
     const fallback = response.status >= 500
       ? "服务暂时不可用，请稍后重试"
       : `请求失败，请稍后重试`;
+    throw new ApiError(userFacingErrorMessage(payload?.info, fallback), String(response.status));
+  }
+
+  if (payload?.code && payload.code !== "0000") {
+    throw new ApiError(
+      userFacingErrorMessage(payload.info, "请求失败，请稍后重试"),
+      payload.code,
+    );
+  }
+
+  return payload?.data;
+}
+
+/**
+ * 上传请求：与 apiRequest 同一套错误口径，区别只是 body 走 multipart，
+ * 由浏览器自己带 boundary，不能手工设置 Content-Type。
+ */
+async function apiUpload(path, formData) {
+  const headers = {};
+  if (state.auth?.token) {
+    headers.Authorization = `Bearer ${state.auth.token}`;
+  }
+
+  let response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      method: "POST",
+      headers,
+      body: formData,
+    });
+  } catch {
+    throw new ApiError("无法连接服务，请检查网络后重试");
+  }
+
+  let payload = null;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+
+  if (response.status === 401) {
+    throw new ApiError(payload?.info || "登录已过期，请重新登录", "401");
+  }
+
+  if (!response.ok) {
+    const fallback = response.status >= 500
+      ? "服务暂时不可用，请稍后重试"
+      : "请求失败，请稍后重试";
     throw new ApiError(userFacingErrorMessage(payload?.info, fallback), String(response.status));
   }
 
@@ -1264,6 +1318,163 @@ function renderToolManager() {
   `;
 }
 
+function knowledgeBaseById(knowledgeBaseId) {
+  return state.knowledgeBases.find((item) => item.id === knowledgeBaseId) || null;
+}
+
+function knowledgeBaseDisplayName(knowledgeBaseId) {
+  return knowledgeBaseById(knowledgeBaseId)?.name || "已删除的知识库";
+}
+
+/** 智能体编辑页里展示"这个知识库被几个 Agent 用着"，方便判断能不能删。 */
+function knowledgeBaseAgentCount(knowledgeBaseId) {
+  return state.agents.filter((agent) =>
+    (agent.knowledgeBaseIds || []).includes(knowledgeBaseId),
+  ).length;
+}
+
+function documentStatusLabel(status) {
+  const labels = {
+    PENDING: "待处理",
+    PROCESSING: "处理中",
+    READY: "可用",
+    FAILED: "失败",
+  };
+  return labels[status] || status || "未知";
+}
+
+function renderKnowledgeQuickList() {
+  if (state.workspaceBusy && !state.knowledgeBases.length) {
+    return `
+      <div class="sidebar-empty">
+        <span class="spinner small"></span>
+        <div>正在加载知识库</div>
+      </div>
+    `;
+  }
+
+  if (!state.knowledgeBases.length) {
+    return '<div class="sidebar-empty">暂无知识库</div>';
+  }
+
+  return state.knowledgeBases
+    .map(
+      (knowledgeBase) => `
+        <button
+          class="sidebar-agent-item"
+          type="button"
+          data-action="manage-knowledge-documents"
+          data-knowledge-id="${escapeHtml(knowledgeBase.id)}"
+        >
+          <span class="api-key-mark">${svgIcon("book", 15)}</span>
+          <span class="sidebar-agent-copy">
+            <span class="sidebar-agent-name">${escapeHtml(knowledgeBase.name)}</span>
+            <span class="sidebar-agent-meta">${knowledgeBase.chunkCount || 0} 个分片</span>
+          </span>
+        </button>
+      `,
+    )
+    .join("");
+}
+
+function renderKnowledgeManager() {
+  if (state.workspaceBusy && !state.knowledgeBases.length) {
+    return `
+      <section class="agent-page">
+        <div class="agent-page-loading">
+          <span class="spinner"></span>
+          <span>正在加载知识库</span>
+        </div>
+      </section>
+    `;
+  }
+
+  if (!state.knowledgeBases.length) {
+    return `
+      <section class="agent-page">
+        <div class="empty-state agent-empty-state">
+          <div class="empty-icon">${svgIcon("book", 24)}</div>
+          <h2>暂无知识库</h2>
+          <p>新建知识库并上传资料后，绑定它的 Agent 会在回答前先检索这些资料。</p>
+          <button class="primary-button" type="button" data-action="new-knowledge-base">
+            ${svgIcon("plus", 16)}
+            <span>新建知识库</span>
+          </button>
+        </div>
+      </section>
+    `;
+  }
+
+  const chunkTotal = state.knowledgeBases.reduce(
+    (total, knowledgeBase) => total + (knowledgeBase.chunkCount || 0),
+    0,
+  );
+
+  return `
+    <section class="agent-page">
+      <div class="agent-page-toolbar">
+        <div class="api-key-summary">
+          <span class="provider-pill">${state.knowledgeBases.length} 个知识库</span>
+          <span class="muted-text">共 ${chunkTotal} 个可检索分片</span>
+        </div>
+        <span class="agent-count">向量化模型由各知识库各自指定</span>
+      </div>
+      <div class="tool-catalog-grid">
+        ${state.knowledgeBases
+          .map(
+            (knowledgeBase) => `
+              <article class="tool-catalog-card">
+                <div class="tool-catalog-header">
+                  <span class="tool-catalog-icon">${svgIcon("book", 18)}</span>
+                  <div>
+                    <h2>${escapeHtml(knowledgeBase.name)}</h2>
+                    <code>${escapeHtml(knowledgeBase.embeddingModel)} · ${knowledgeBase.dimension || 0} 维</code>
+                  </div>
+                </div>
+                <p>${escapeHtml(knowledgeBase.description || "暂无说明")}</p>
+                <div class="knowledge-meta">
+                  <span class="tool-param-pill">分片 ${knowledgeBase.chunkCount || 0}</span>
+                  <span class="tool-param-pill">分片长度 ${knowledgeBase.chunkSize || 0}</span>
+                  <span class="tool-param-pill">重叠 ${knowledgeBase.chunkOverlap || 0}</span>
+                  <span class="tool-param-pill">${knowledgeBaseAgentCount(knowledgeBase.id)} 个 Agent 在用</span>
+                </div>
+                <div class="knowledge-card-actions">
+                  <button
+                    class="secondary-button"
+                    type="button"
+                    data-action="manage-knowledge-documents"
+                    data-knowledge-id="${escapeHtml(knowledgeBase.id)}"
+                  >
+                    ${svgIcon("message", 14)}
+                    <span>文档管理</span>
+                  </button>
+                  <button
+                    class="secondary-button"
+                    type="button"
+                    data-action="test-knowledge-search"
+                    data-knowledge-id="${escapeHtml(knowledgeBase.id)}"
+                  >
+                    ${svgIcon("search", 14)}
+                    <span>检索测试</span>
+                  </button>
+                  <button
+                    class="icon-button danger"
+                    type="button"
+                    data-action="delete-knowledge-base"
+                    data-knowledge-id="${escapeHtml(knowledgeBase.id)}"
+                    title="删除知识库"
+                    aria-label="删除知识库"
+                  >${svgIcon("trash", 16)}</button>
+                </div>
+              </article>
+            `,
+          )
+          .join("")}
+      </div>
+    </section>
+  `;
+}
+
 function renderAgentManager() {
   if (state.workspaceBusy && !state.agents.length) {
     return `
@@ -1468,6 +1679,14 @@ function renderWorkspace() {
             ${svgIcon("tool", 17)}
             <span>工具</span>
           </button>
+          <button
+            class="sidebar-nav-item ${state.view === "knowledge" ? "active" : ""}"
+            type="button"
+            data-action="show-knowledge"
+          >
+            ${svgIcon("book", 17)}
+            <span>知识库</span>
+          </button>
         </nav>
         ${
           state.view === "chat"
@@ -1532,9 +1751,24 @@ function renderWorkspace() {
                 : `
               <section class="sidebar-section">
                 <div class="sidebar-section-header">
-                  <span class="sidebar-section-title">工具</span>
+                  <span class="sidebar-section-title">${state.view === "knowledge" ? "知识库" : "工具"}</span>
+                  ${
+                    state.view === "knowledge"
+                      ? `
+                        <button
+                          class="icon-button"
+                          type="button"
+                          data-action="new-knowledge-base"
+                          title="新建知识库"
+                          aria-label="新建知识库"
+                        >${svgIcon("plus", 18)}</button>
+                      `
+                      : ""
+                  }
                 </div>
-                <div class="session-list agent-quick-list">${renderToolQuickList()}</div>
+                <div class="session-list agent-quick-list">${
+                  state.view === "knowledge" ? renderKnowledgeQuickList() : renderToolQuickList()
+                }</div>
               </section>
             `
         }
@@ -1600,7 +1834,14 @@ function renderWorkspace() {
                     <p>${state.toolDefinitions.length} 个可用工具</p>
                   </div>
                 `
-                    : `
+                    : state.view === "knowledge"
+                      ? `
+                  <div class="workspace-title always-visible">
+                    <h1>知识库</h1>
+                    <p>${state.knowledgeBases.length} 个知识库</p>
+                  </div>
+                `
+                      : `
                   <div class="workspace-title always-visible">
                     <h1>API 设置</h1>
                     <p>${state.apiKeys.length} 个 API 密钥</p>
@@ -1624,7 +1865,14 @@ function renderWorkspace() {
                       <span>新增密钥</span>
                     </button>
                   `
-                  : ""
+                  : state.view === "knowledge"
+                    ? `
+                      <button class="secondary-button header-create-button" type="button" data-action="new-knowledge-base">
+                        ${svgIcon("plus", 16)}
+                        <span>新建知识库</span>
+                      </button>
+                    `
+                    : ""
             }
             <button
               class="icon-button"
@@ -1723,7 +1971,9 @@ function renderWorkspace() {
               ? renderAgentManager()
               : state.view === "apiKeys"
                 ? renderApiKeyManager()
-                : renderToolManager()
+                : state.view === "knowledge"
+                  ? renderKnowledgeManager()
+                  : renderToolManager()
         }
       </main>
     </div>
@@ -1753,6 +2003,7 @@ function renderAgentEditorModal() {
     capabilityProfile: agent?.capabilityProfile || "CHAT",
   };
   const selectedTools = new Set(agent?.tools || []);
+  const selectedKnowledgeBaseIds = new Set(agent?.knowledgeBaseIds || []);
   const availableTools = state.toolDefinitions.length
     ? state.toolDefinitions
     : [
@@ -1879,6 +2130,39 @@ function renderAgentEditorModal() {
                 effectiveToolHint(values.capabilityProfile, selectedTools),
               )}</p>
             </section>
+
+            <section class="agent-form-section">
+              <h3 class="agent-form-section-title">知识库</h3>
+              ${
+                state.knowledgeBases.length
+                  ? `
+                    <p class="form-hint">
+                      勾选后，每次提问都会先用你的话去这些库里检索，命中的资料随问题一起发给模型。
+                    </p>
+                    <div class="tool-option-grid">
+                      ${state.knowledgeBases
+                        .map(
+                          (knowledgeBase) => `
+                            <label class="tool-option tool-option-detailed">
+                              <input
+                                type="checkbox"
+                                name="knowledgeBaseIds"
+                                value="${escapeHtml(knowledgeBase.id)}"
+                                ${selectedKnowledgeBaseIds.has(knowledgeBase.id) ? "checked" : ""}
+                              />
+                              <span>
+                                <strong>${escapeHtml(knowledgeBase.name)}</strong>
+                                <small>${escapeHtml(knowledgeBase.embeddingModel || "")} · ${knowledgeBase.chunkCount || 0} 个分片</small>
+                              </span>
+                            </label>
+                          `,
+                        )
+                        .join("")}
+                    </div>
+                  `
+                  : '<p class="form-hint">还没有知识库，可在“知识库”页新建并上传资料。</p>'
+              }
+            </section>
           </div>
           <div class="modal-footer agent-editor-footer">
             <button class="ghost-button" type="button" data-action="close-modal">取消</button>
@@ -1888,6 +2172,358 @@ function renderAgentEditorModal() {
             </button>
           </div>
         </form>
+      </section>
+    </div>
+  `;
+}
+
+function formatFileSize(bytes) {
+  const size = Number(bytes || 0);
+  if (size < 1024) {
+    return `${size} B`;
+  }
+  if (size < 1024 * 1024) {
+    return `${(size / 1024).toFixed(1)} KB`;
+  }
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function renderKnowledgeEditorModal() {
+  const enabledApiKeys = state.apiKeys.filter((apiKey) => apiKey.enabled !== false);
+
+  return `
+    <div class="modal-backdrop" data-modal-backdrop>
+      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="knowledge-editor-title">
+        <div class="modal-header">
+          <div>
+            <h2 class="modal-title" id="knowledge-editor-title">新建知识库</h2>
+            <p class="modal-subtitle">上传的资料会按下面的模型转成向量存起来</p>
+          </div>
+          <button class="icon-button" type="button" data-action="close-modal" aria-label="关闭">
+            ${svgIcon("x", 18)}
+          </button>
+        </div>
+        <form id="knowledge-editor-form">
+          <div class="modal-body">
+            <div class="field">
+              <label for="knowledge-name">名称</label>
+              <input id="knowledge-name" name="name" maxlength="128" required autofocus />
+            </div>
+            <div class="field">
+              <label for="knowledge-description">说明</label>
+              <textarea id="knowledge-description" name="description" maxlength="500"></textarea>
+            </div>
+            <div class="field-grid two-columns">
+              <div class="field">
+                <label for="knowledge-api-key">向量化 API 密钥</label>
+                <select id="knowledge-api-key" name="apiKeyId" required ${enabledApiKeys.length ? "" : "disabled"}>
+                  ${
+                    enabledApiKeys.length
+                      ? enabledApiKeys
+                          .map(
+                            (apiKey) => `
+                              <option value="${escapeHtml(apiKey.id)}">
+                                ${escapeHtml(apiKeyDisplayName(apiKey))} · ${escapeHtml(providerLabel(apiKey.provider))}
+                              </option>
+                            `,
+                          )
+                          .join("")
+                      : '<option value="">请先配置 API 密钥</option>'
+                  }
+                </select>
+              </div>
+              <div class="field">
+                <label for="knowledge-embedding-model">向量化模型</label>
+                <input
+                  id="knowledge-embedding-model"
+                  name="embeddingModel"
+                  list="embedding-model-options"
+                  maxlength="128"
+                  value="BAAI/bge-m3"
+                  required
+                />
+                <datalist id="embedding-model-options">
+                  <option value="BAAI/bge-m3"></option>
+                  <option value="BAAI/bge-large-zh-v1.5"></option>
+                  <option value="BAAI/bge-small-zh-v1.5"></option>
+                </datalist>
+              </div>
+            </div>
+            <div class="field-grid three-columns">
+              <div class="field">
+                <label for="knowledge-dimension">向量维度</label>
+                <input id="knowledge-dimension" name="dimension" type="number" min="1" step="1" value="1024" />
+              </div>
+              <div class="field">
+                <label for="knowledge-chunk-size">分片长度</label>
+                <input id="knowledge-chunk-size" name="chunkSize" type="number" min="1" step="1" value="500" />
+              </div>
+              <div class="field">
+                <label for="knowledge-chunk-overlap">分片重叠</label>
+                <input id="knowledge-chunk-overlap" name="chunkOverlap" type="number" min="0" step="1" value="50" />
+              </div>
+            </div>
+            <p class="form-hint">
+              bge-m3 输出 1024 维；维度必须和模型一致，换了模型要重新建库。
+            </p>
+            ${
+              enabledApiKeys.length
+                ? ""
+                : '<p class="form-hint">暂无启用中的 API 密钥，请先前往 API 设置添加。</p>'
+            }
+          </div>
+          <div class="modal-footer">
+            <button class="ghost-button" type="button" data-action="close-modal">取消</button>
+            <button
+              class="primary-button"
+              type="submit"
+              ${state.knowledgeBusy || !enabledApiKeys.length ? "disabled" : ""}
+            >
+              ${state.knowledgeBusy ? '<span class="button-spinner"></span>' : svgIcon("plus", 16)}
+              <span>创建</span>
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  `;
+}
+
+function renderKnowledgeDocumentsModal() {
+  const knowledgeBase = knowledgeBaseById(state.modal.knowledgeBaseId);
+  const documents = state.knowledgeDocumentsFor === state.modal.knowledgeBaseId
+    ? state.knowledgeDocuments
+    : [];
+  const loading = state.knowledgeBusy && state.knowledgeDocumentsFor !== state.modal.knowledgeBaseId;
+
+  return `
+    <div class="modal-backdrop" data-modal-backdrop>
+      <section class="modal knowledge-documents-modal" role="dialog" aria-modal="true" aria-labelledby="knowledge-documents-title">
+        <div class="modal-header">
+          <div>
+            <h2 class="modal-title" id="knowledge-documents-title">${escapeHtml(knowledgeBase?.name || "知识库")} · 文档</h2>
+            <p class="modal-subtitle">支持 txt / md，上传后会立即解析、分片并向量化入库</p>
+          </div>
+          <button class="icon-button" type="button" data-action="close-modal" aria-label="关闭">
+            ${svgIcon("x", 18)}
+          </button>
+        </div>
+        <div class="modal-body">
+          <form id="knowledge-upload-form" class="knowledge-upload-form">
+            <label class="file-picker">
+              <input id="knowledge-upload-file" type="file" name="file" accept=".txt,.md,.markdown" required />
+              <span>${svgIcon("plus", 15)} 选择文件</span>
+            </label>
+            <button class="primary-button" type="submit" ${state.knowledgeBusy ? "disabled" : ""}>
+              ${state.knowledgeBusy ? '<span class="button-spinner"></span>' : svgIcon("save", 15)}
+              <span>上传并入库</span>
+            </button>
+          </form>
+          <div class="document-list">
+            ${
+              loading
+                ? '<div class="sidebar-empty"><span class="spinner small"></span><div>正在加载文档</div></div>'
+                : documents.length
+                  ? documents
+                      .map(
+                        (document) => `
+                          <article class="document-row">
+                            <div class="document-row-main">
+                              <strong>${escapeHtml(document.fileName)}</strong>
+                              <span class="document-row-meta">
+                                ${formatFileSize(document.fileSize)} ·
+                                ${document.charCount || 0} 字 ·
+                                ${document.chunkCount || 0} 个分片
+                              </span>
+                              ${
+                                document.status === "FAILED"
+                                  ? `<span class="document-error">${escapeHtml(document.errorMessage || "处理失败")}</span>`
+                                  : ""
+                              }
+                            </div>
+                            <span class="document-status status-${escapeHtml(String(document.status || "").toLowerCase())}">
+                              ${escapeHtml(documentStatusLabel(document.status))}
+                            </span>
+                            <button
+                              class="icon-button danger"
+                              type="button"
+                              data-action="delete-knowledge-document"
+                              data-document-id="${escapeHtml(document.id)}"
+                              data-knowledge-id="${escapeHtml(state.modal.knowledgeBaseId)}"
+                              title="删除文档"
+                              aria-label="删除文档"
+                            >${svgIcon("trash", 15)}</button>
+                          </article>
+                        `,
+                      )
+                      .join("")
+                  : '<div class="sidebar-empty">还没有文档，先上传一份资料试试</div>'
+            }
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="ghost-button" type="button" data-action="close-modal">关闭</button>
+          <button
+            class="secondary-button"
+            type="button"
+            data-action="test-knowledge-search"
+            data-knowledge-id="${escapeHtml(state.modal.knowledgeBaseId)}"
+          >
+            ${svgIcon("search", 15)}
+            <span>检索测试</span>
+          </button>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderKnowledgeSearchModal() {
+  const knowledgeBase = knowledgeBaseById(state.modal.knowledgeBaseId);
+  const results = state.modal.results || [];
+  const searched = Boolean(state.modal.searched);
+
+  return `
+    <div class="modal-backdrop" data-modal-backdrop>
+      <section class="modal knowledge-documents-modal" role="dialog" aria-modal="true" aria-labelledby="knowledge-search-title">
+        <div class="modal-header">
+          <div>
+            <h2 class="modal-title" id="knowledge-search-title">${escapeHtml(knowledgeBase?.name || "知识库")} · 检索测试</h2>
+            <p class="modal-subtitle">用一句话去库里找最相近的分片，不经过模型</p>
+          </div>
+          <button class="icon-button" type="button" data-action="close-modal" aria-label="关闭">
+            ${svgIcon("x", 18)}
+          </button>
+        </div>
+        <div class="modal-body">
+          <form id="knowledge-search-form">
+            <div class="field">
+              <label for="knowledge-search-query">查询内容</label>
+              <input
+                id="knowledge-search-query"
+                name="query"
+                maxlength="500"
+                value="${escapeHtml(state.modal.query || "")}"
+                placeholder="例如：退换货流程是怎样的"
+                required
+                autofocus
+              />
+            </div>
+            <div class="field">
+              <label for="knowledge-search-top-k">返回条数</label>
+              <input id="knowledge-search-top-k" name="topK" type="number" min="1" max="20" step="1" value="${state.modal.topK || 4}" />
+            </div>
+            <div class="knowledge-card-actions">
+              <button class="primary-button" type="submit" ${state.knowledgeBusy ? "disabled" : ""}>
+                ${state.knowledgeBusy ? '<span class="button-spinner"></span>' : svgIcon("search", 15)}
+                <span>检索</span>
+              </button>
+            </div>
+          </form>
+          <div class="document-list">
+            ${
+              results.length
+                ? results
+                    .map(
+                      (match) => `
+                        <article class="search-hit">
+                          <div class="search-hit-header">
+                            <strong>${escapeHtml(match.documentName || "未知文档")}</strong>
+                            <span class="search-score">相似度 ${Number(match.score || 0).toFixed(4)}</span>
+                          </div>
+                          <p>${escapeHtml(match.content)}</p>
+                        </article>
+                      `,
+                    )
+                    .join("")
+                : searched
+                  ? '<div class="sidebar-empty">没有检索到片段，可能文档还没入库或这个库是空的</div>'
+                  : '<div class="sidebar-empty">输入一句话后点检索，结果按相似度从高到低排列</div>'
+            }
+          </div>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderDeleteKnowledgeBaseModal() {
+  const knowledgeBase = knowledgeBaseById(state.modal.knowledgeBaseId);
+  const documentCount = state.modal.documentCount ?? null;
+  const agentCount = knowledgeBaseAgentCount(state.modal.knowledgeBaseId);
+
+  return `
+    <div class="modal-backdrop" data-modal-backdrop>
+      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="delete-knowledge-title">
+        <div class="modal-header">
+          <h2 class="modal-title" id="delete-knowledge-title">删除知识库</h2>
+          <button class="icon-button" type="button" data-action="close-modal" aria-label="关闭">
+            ${svgIcon("x", 18)}
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="modal-danger-mark">${svgIcon("trash", 19)}</div>
+          <p class="modal-copy">
+            知识库“${escapeHtml(knowledgeBase?.name || "")}”下的全部文档、分片和上传的原文件都会被删除，
+            该操作不可撤销。
+          </p>
+          ${
+            agentCount
+              ? `<p class="form-hint">有 ${agentCount} 个 Agent 绑定了这个知识库，删除后它们将不再检索到这些资料。</p>`
+              : ""
+          }
+          ${documentCount === null ? "" : `<p class="form-hint">该知识库当前有 ${documentCount} 份文档。</p>`}
+        </div>
+        <div class="modal-footer">
+          <button class="ghost-button" type="button" data-action="close-modal">取消</button>
+          <button
+            class="primary-button"
+            type="button"
+            data-action="confirm-delete-knowledge-base"
+            data-knowledge-id="${escapeHtml(state.modal.knowledgeBaseId)}"
+            ${state.knowledgeBusy ? "disabled" : ""}
+          >
+            ${svgIcon("trash", 16)}
+            <span>删除</span>
+          </button>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderDeleteKnowledgeDocumentModal() {
+  const document = state.knowledgeDocuments.find((item) => item.id === state.modal.documentId);
+
+  return `
+    <div class="modal-backdrop" data-modal-backdrop>
+      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="delete-document-title">
+        <div class="modal-header">
+          <h2 class="modal-title" id="delete-document-title">删除文档</h2>
+          <button class="icon-button" type="button" data-action="close-modal" aria-label="关闭">
+            ${svgIcon("x", 18)}
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="modal-danger-mark">${svgIcon("trash", 19)}</div>
+          <p class="modal-copy">
+            文档“${escapeHtml(document?.fileName || "")}”及其全部分片会被删除，检索时将不再命中它的内容。
+          </p>
+        </div>
+        <div class="modal-footer">
+          <button class="ghost-button" type="button" data-action="close-modal">取消</button>
+          <button
+            class="primary-button"
+            type="button"
+            data-action="confirm-delete-knowledge-document"
+            data-document-id="${escapeHtml(state.modal.documentId)}"
+            data-knowledge-id="${escapeHtml(state.modal.knowledgeBaseId || "")}"
+            ${state.knowledgeBusy ? "disabled" : ""}
+          >
+            ${svgIcon("trash", 16)}
+            <span>删除</span>
+          </button>
+        </div>
       </section>
     </div>
   `;
@@ -2143,6 +2779,26 @@ function renderModal() {
     return renderToolTestModal();
   }
 
+  if (state.modal.type === "knowledge-editor") {
+    return renderKnowledgeEditorModal();
+  }
+
+  if (state.modal.type === "knowledge-documents") {
+    return renderKnowledgeDocumentsModal();
+  }
+
+  if (state.modal.type === "knowledge-search") {
+    return renderKnowledgeSearchModal();
+  }
+
+  if (state.modal.type === "delete-knowledge-base") {
+    return renderDeleteKnowledgeBaseModal();
+  }
+
+  if (state.modal.type === "delete-knowledge-document") {
+    return renderDeleteKnowledgeDocumentModal();
+  }
+
   if (state.modal.type === "agent-editor") {
     return renderAgentEditorModal();
   }
@@ -2341,16 +2997,18 @@ async function refreshWorkspace({ render = true, quiet = false } = {}) {
   }
 
   try {
-    const [agents, sessions, apiKeys, tools] = await Promise.all([
+    const [agents, sessions, apiKeys, tools, knowledgeBases] = await Promise.all([
       apiRequest("/agent/list"),
       apiRequest("/session/list"),
       apiRequest("/apikey/list"),
       apiRequest("/tool/list"),
+      apiRequest("/rag/knowledge-base/list"),
     ]);
 
     state.agents = Array.isArray(agents) ? agents : [];
     state.apiKeys = Array.isArray(apiKeys) ? apiKeys : [];
     state.toolDefinitions = Array.isArray(tools) ? tools : [];
+    state.knowledgeBases = Array.isArray(knowledgeBases) ? knowledgeBases : [];
     const agentIds = new Set(state.agents.map((agent) => agent.id));
     state.sessions = (Array.isArray(sessions) ? sessions : []).filter((session) =>
       agentIds.has(session.agentId),
@@ -2612,6 +3270,7 @@ async function saveAgent(form) {
       modelId: String(formData.get("modelId") || "").trim(),
       capabilityProfile: String(formData.get("capabilityProfile") || "CHAT").trim(),
       tools: formData.getAll("tools").map(String),
+      knowledgeBaseIds: formData.getAll("knowledgeBaseIds").map(String),
     };
     if (!payload.apiKeyId) {
       throw new ApiError("请选择 API 密钥");
@@ -3032,7 +3691,10 @@ async function handleLogin(form) {
 }
 
 function switchView(view) {
-  state.view = view === "agents" || view === "apiKeys" || view === "tools" ? view : "chat";
+  state.view =
+    view === "agents" || view === "apiKeys" || view === "tools" || view === "knowledge"
+      ? view
+      : "chat";
   state.sidebarOpen = false;
   renderWorkspace();
 }
@@ -3067,6 +3729,279 @@ function openDeleteApiKeyModal(apiKeyId) {
     apiKeyId,
   };
   renderWorkspace();
+}
+
+function optionalIntegerField(value, { min, label }) {
+  const text = String(value ?? "").trim();
+  if (!text) {
+    return null;
+  }
+  const number = Number(text);
+  if (!Number.isInteger(number) || number < min) {
+    throw new ApiError(`${label}必须是不小于 ${min} 的整数`);
+  }
+  return number;
+}
+
+function openKnowledgeEditor() {
+  state.modal = { type: "knowledge-editor" };
+  renderWorkspace();
+}
+
+function openDeleteKnowledgeBaseModal(knowledgeBaseId) {
+  state.modal = { type: "delete-knowledge-base", knowledgeBaseId, documentCount: null };
+  renderWorkspace();
+}
+
+function openDeleteKnowledgeDocumentModal(documentId, knowledgeBaseId) {
+  state.modal = { type: "delete-knowledge-document", documentId, knowledgeBaseId };
+  renderWorkspace();
+}
+
+function openKnowledgeSearch(knowledgeBaseId) {
+  state.modal = {
+    type: "knowledge-search",
+    knowledgeBaseId,
+    query: "",
+    topK: 4,
+    results: [],
+    searched: false,
+  };
+  renderWorkspace();
+}
+
+/** 拉取知识库列表，用于刷新分片数等统计信息。 */
+async function refreshKnowledgeBases() {
+  const knowledgeBases = await apiRequest("/rag/knowledge-base/list");
+  state.knowledgeBases = Array.isArray(knowledgeBases) ? knowledgeBases : [];
+}
+
+/** 拉取某个知识库的文档列表。 */
+async function refreshKnowledgeDocuments(knowledgeBaseId) {
+  const documents = await apiRequest(
+    `/rag/knowledge-base/document/list?knowledgeBaseId=${encodeURIComponent(knowledgeBaseId)}`,
+  );
+  state.knowledgeDocuments = Array.isArray(documents) ? documents : [];
+  state.knowledgeDocumentsFor = knowledgeBaseId;
+}
+
+async function openKnowledgeDocuments(knowledgeBaseId) {
+  state.modal = { type: "knowledge-documents", knowledgeBaseId };
+  state.knowledgeDocuments = [];
+  state.knowledgeDocumentsFor = "";
+  state.knowledgeBusy = true;
+  renderWorkspace();
+
+  try {
+    await refreshKnowledgeDocuments(knowledgeBaseId);
+  } catch (error) {
+    if (error.code === "401") {
+      clearAuth();
+      renderLogin(error.message);
+      return;
+    }
+    showToast("error", "加载文档失败", error.message);
+  } finally {
+    state.knowledgeBusy = false;
+    renderWorkspace();
+  }
+}
+
+async function saveKnowledgeBase(form) {
+  const formData = new FormData(form);
+  let payload;
+
+  try {
+    payload = {
+      name: String(formData.get("name") || "").trim(),
+      description: String(formData.get("description") || "").trim() || null,
+      apiKeyId: String(formData.get("apiKeyId") || "").trim(),
+      embeddingModel: String(formData.get("embeddingModel") || "").trim(),
+      dimension: optionalIntegerField(formData.get("dimension"), { min: 1, label: "向量维度" }),
+      chunkSize: optionalIntegerField(formData.get("chunkSize"), { min: 1, label: "分片长度" }),
+      chunkOverlap: optionalIntegerField(formData.get("chunkOverlap"), { min: 0, label: "分片重叠" }),
+    };
+    if (!payload.apiKeyId) {
+      throw new ApiError("请选择用于向量化的 API 密钥");
+    }
+    if (!payload.embeddingModel) {
+      throw new ApiError("向量化模型不能为空");
+    }
+  } catch (error) {
+    showToast("error", "创建失败", error.message);
+    return;
+  }
+
+  state.knowledgeBusy = true;
+  state.modal = null;
+  renderWorkspace();
+
+  try {
+    const created = await apiRequest("/rag/knowledge-base/create", {
+      method: "POST",
+      body: payload,
+    });
+    showToast("success", "知识库已创建", `${created.name}，接下来上传资料即可`);
+  } catch (error) {
+    if (error.code === "401") {
+      clearAuth();
+      renderLogin(error.message);
+      return;
+    }
+    showToast("error", "创建失败", error.message);
+  } finally {
+    try {
+      await refreshKnowledgeBases();
+    } catch {
+      // 列表刷新失败不影响创建结果，下一次手动刷新即可
+    }
+    state.knowledgeBusy = false;
+    renderWorkspace();
+  }
+}
+
+async function uploadKnowledgeDocument(form, knowledgeBaseId) {
+  const file = new FormData(form).get("file");
+  if (!file || !file.size) {
+    showToast("error", "上传失败", "请选择要上传的文件");
+    return;
+  }
+
+  const upload = new FormData();
+  upload.append("file", file);
+  state.knowledgeBusy = true;
+  renderWorkspace();
+
+  try {
+    const document = await apiUpload(
+      `/rag/knowledge-base/document/upload?knowledgeBaseId=${encodeURIComponent(knowledgeBaseId)}`,
+      upload,
+    );
+    showToast("success", "文档已入库", `${document.fileName} · ${document.chunkCount} 个分片`);
+  } catch (error) {
+    if (error.code === "401") {
+      clearAuth();
+      renderLogin(error.message);
+      return;
+    }
+    showToast("error", "入库失败", error.message);
+  } finally {
+    state.knowledgeBusy = false;
+    try {
+      // 失败时文档会以 FAILED 状态留在列表里，所以两种结果都要重新拉一次
+      await refreshKnowledgeDocuments(knowledgeBaseId);
+      await refreshKnowledgeBases();
+    } catch {
+      // 列表刷新失败不覆盖上面的提示
+    }
+    renderWorkspace();
+  }
+}
+
+async function runKnowledgeSearch(form, knowledgeBaseId) {
+  const formData = new FormData(form);
+  const query = String(formData.get("query") || "").trim();
+  if (!query) {
+    showToast("error", "检索失败", "请先输入查询内容");
+    return;
+  }
+  let topK;
+  try {
+    topK = optionalIntegerField(formData.get("topK"), { min: 1, label: "返回条数" }) || 4;
+  } catch (error) {
+    showToast("error", "检索失败", error.message);
+    return;
+  }
+
+  state.knowledgeBusy = true;
+  renderWorkspace();
+
+  try {
+    const results = await apiRequest("/rag/knowledge-base/search", {
+      method: "POST",
+      body: { knowledgeBaseId, query, topK },
+    });
+    if (state.modal?.type === "knowledge-search") {
+      state.modal.query = query;
+      state.modal.topK = topK;
+      state.modal.results = Array.isArray(results) ? results : [];
+      state.modal.searched = true;
+    }
+  } catch (error) {
+    if (error.code === "401") {
+      clearAuth();
+      renderLogin(error.message);
+      return;
+    }
+    if (state.modal?.type === "knowledge-search") {
+      state.modal.results = [];
+      state.modal.searched = true;
+    }
+    showToast("error", "检索失败", error.message);
+  } finally {
+    state.knowledgeBusy = false;
+    renderWorkspace();
+  }
+}
+
+async function deleteKnowledgeBase(knowledgeBaseId) {
+  state.knowledgeBusy = true;
+  state.modal = null;
+  renderWorkspace();
+
+  try {
+    await apiRequest(`/rag/knowledge-base/delete?id=${encodeURIComponent(knowledgeBaseId)}`, {
+      method: "POST",
+    });
+    // Agent 侧的解绑由后续刷新同步，这里先本地清掉，避免界面短暂显示已失效的绑定
+    state.agents = state.agents.map((agent) => ({
+      ...agent,
+      knowledgeBaseIds: (agent.knowledgeBaseIds || []).filter((id) => id !== knowledgeBaseId),
+    }));
+    state.knowledgeBases = state.knowledgeBases.filter((item) => item.id !== knowledgeBaseId);
+    showToast("success", "知识库已删除");
+    await refreshWorkspace({ render: false, quiet: true });
+  } catch (error) {
+    if (error.code === "401") {
+      clearAuth();
+      renderLogin(error.message);
+      return;
+    }
+    showToast("error", "删除失败", error.message);
+  } finally {
+    state.knowledgeBusy = false;
+    renderWorkspace();
+  }
+}
+
+async function deleteKnowledgeDocument(documentId, knowledgeBaseId) {
+  state.knowledgeBusy = true;
+  state.modal = { type: "knowledge-documents", knowledgeBaseId };
+  renderWorkspace();
+
+  try {
+    await apiRequest(
+      `/rag/knowledge-base/document/delete?id=${encodeURIComponent(documentId)}`,
+      { method: "POST" },
+    );
+    showToast("success", "文档已删除");
+  } catch (error) {
+    if (error.code === "401") {
+      clearAuth();
+      renderLogin(error.message);
+      return;
+    }
+    showToast("error", "删除失败", error.message);
+  } finally {
+    state.knowledgeBusy = false;
+    try {
+      await refreshKnowledgeDocuments(knowledgeBaseId);
+      await refreshKnowledgeBases();
+    } catch {
+      // 列表刷新失败不覆盖上面的提示
+    }
+    renderWorkspace();
+  }
 }
 
 function openToolTestModal(toolId, methodName) {
@@ -3224,6 +4159,24 @@ app.addEventListener("submit", async (event) => {
     return;
   }
 
+  if (form.id === "knowledge-editor-form") {
+    event.preventDefault();
+    await saveKnowledgeBase(form);
+    return;
+  }
+
+  if (form.id === "knowledge-upload-form") {
+    event.preventDefault();
+    await uploadKnowledgeDocument(form, state.modal?.knowledgeBaseId || "");
+    return;
+  }
+
+  if (form.id === "knowledge-search-form") {
+    event.preventDefault();
+    await runKnowledgeSearch(form, state.modal?.knowledgeBaseId || "");
+    return;
+  }
+
   if (form.id === "composer-form") {
     event.preventDefault();
     const formData = new FormData(form);
@@ -3249,6 +4202,8 @@ app.addEventListener("click", async (event) => {
   const messageId = button.dataset.messageId;
   const toolId = button.dataset.toolId;
   const methodName = button.dataset.methodName;
+  const knowledgeId = button.dataset.knowledgeId;
+  const documentId = button.dataset.documentId;
 
   if (action === "select-session") {
     await selectSession(sessionId);
@@ -3268,6 +4223,25 @@ app.addEventListener("click", async (event) => {
     switchView("apiKeys");
   } else if (action === "show-tools") {
     switchView("tools");
+  } else if (action === "show-knowledge") {
+    switchView("knowledge");
+  } else if (action === "new-knowledge-base") {
+    openKnowledgeEditor();
+  } else if (action === "manage-knowledge-documents") {
+    await openKnowledgeDocuments(knowledgeId);
+  } else if (action === "test-knowledge-search") {
+    openKnowledgeSearch(knowledgeId);
+  } else if (action === "delete-knowledge-base") {
+    openDeleteKnowledgeBaseModal(knowledgeId);
+  } else if (action === "confirm-delete-knowledge-base") {
+    await deleteKnowledgeBase(knowledgeId || state.modal?.knowledgeBaseId);
+  } else if (action === "delete-knowledge-document") {
+    openDeleteKnowledgeDocumentModal(documentId, knowledgeId);
+  } else if (action === "confirm-delete-knowledge-document") {
+    await deleteKnowledgeDocument(
+      documentId || state.modal?.documentId,
+      knowledgeId || state.modal?.knowledgeBaseId,
+    );
   } else if (action === "test-tool") {
     openToolTestModal(toolId, methodName);
   } else if (action === "new-agent") {

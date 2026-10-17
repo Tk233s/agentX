@@ -40,6 +40,9 @@ public class AgentPO {
     /** 工具名称列表（JSON 数组字符串）：如 ["weather", "file-read"] */
     private String toolsJson;
 
+    /** 绑定的知识库 ID 列表（JSON 数组字符串）：如 ["a1b2...", "c3d4..."] */
+    private String knowledgeBaseIdsJson;
+
     /** 智能体状态：1-启用，0-禁用 */
     private Boolean enabled;
 

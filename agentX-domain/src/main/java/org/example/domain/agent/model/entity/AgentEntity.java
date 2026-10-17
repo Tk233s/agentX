@@ -55,6 +55,13 @@ public class AgentEntity {
      */
     private List<String> tools;
 
+    /**
+     * 绑定的知识库 ID 列表。
+     * 对话时按最后一条用户消息去这些库里检索，命中的片段会拼进 System Prompt。
+     * 数据库存储为 JSON 数组字符串，与 tools 同一模式。
+     */
+    private List<String> knowledgeBaseIds;
+
     /** 智能体状态：true-启用，false-禁用 */
     private Boolean enabled;
 
@@ -75,7 +82,8 @@ public class AgentEntity {
                                         String systemPrompt, String welcomeMessage, String userId,
                                         String apiKeyId, String modelId,
                                         String capabilityProfile,
-                                        List<String> tools) {
+                                        List<String> tools,
+                                        List<String> knowledgeBaseIds) {
         AgentEntity agent = new AgentEntity();
         agent.setId(UUID.randomUUID().toString().replace("-", ""));
         agent.setName(name);
@@ -87,6 +95,7 @@ public class AgentEntity {
         agent.setModelId(modelId);
         agent.setCapabilityProfile(capabilityProfile);
         agent.setTools(tools);
+        agent.setKnowledgeBaseIds(knowledgeBaseIds);
         agent.setEnabled(true);
         agent.setUserId(userId);
         agent.setCreatedAt(LocalDateTime.now());
@@ -111,7 +120,8 @@ public class AgentEntity {
                 apiKeyId,
                 modelId,
                 AgentCapabilityProfile.CUSTOM.name(),
-                tools);
+                tools,
+                null);
     }
 
     /**
@@ -141,6 +151,25 @@ public class AgentEntity {
             }
         }
         tools = new ArrayList<>(normalized);
+    }
+
+    /**
+     * 统一清理知识库绑定：去空、去重。
+     *
+     * 与工具不同，知识库 ID 是大小写敏感的主键，所以这里不做小写转换。
+     */
+    public void normalizeKnowledgeBaseIds() {
+        if (knowledgeBaseIds == null || knowledgeBaseIds.isEmpty()) {
+            knowledgeBaseIds = new ArrayList<>();
+            return;
+        }
+        LinkedHashSet<String> normalized = new LinkedHashSet<>();
+        for (String knowledgeBaseId : knowledgeBaseIds) {
+            if (knowledgeBaseId != null && !knowledgeBaseId.isBlank()) {
+                normalized.add(knowledgeBaseId.trim());
+            }
+        }
+        knowledgeBaseIds = new ArrayList<>(normalized);
     }
 
     /**

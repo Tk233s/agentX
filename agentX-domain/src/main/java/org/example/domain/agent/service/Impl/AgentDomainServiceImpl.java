@@ -5,6 +5,7 @@ import org.example.domain.agent.model.entity.AgentEntity;
 import org.example.domain.agent.service.IAgentDomainService;
 import org.example.domain.apikey.model.entity.ApiKeyEntity;
 import org.example.domain.apikey.service.IApiKeyDomainService;
+import org.example.domain.rag.service.IRagDomainService;
 import org.example.domain.tool.adapter.port.ToolRuntimePort;
 import org.example.types.enums.ResponseCode;
 import org.example.types.exception.AppException;
@@ -30,6 +31,9 @@ public class AgentDomainServiceImpl implements IAgentDomainService {
     @Resource
     private ToolRuntimePort toolRuntimePort;
 
+    @Resource
+    private IRagDomainService ragDomainService;
+
     /**
      * 创建智能体
      * @param agent 待创建的智能体实体
@@ -41,9 +45,11 @@ public class AgentDomainServiceImpl implements IAgentDomainService {
         agent.validate();
         // 2. 校验工具绑定并统一工具标识
         validateTools(agent);
-        // 3. 校验密钥存在、归属当前用户且已启用
+        // 3. 校验知识库绑定
+        validateKnowledgeBases(agent, agent.getUserId());
+        // 4. 校验密钥存在、归属当前用户且已启用
         validateApiKey(agent.getApiKeyId(), agent.getUserId());
-        // 4. 落库
+        // 5. 落库
         agentRepository.save(agent);
         return agent;
     }
@@ -65,14 +71,16 @@ public class AgentDomainServiceImpl implements IAgentDomainService {
         agent.validate();
         // 4. 校验能力模式与工具绑定，并统一工具标识
         validateTools(agent);
-        // 5. 校验密钥存在、归属当前用户且已启用
+        // 5. 校验知识库绑定（此时 userId 还没回填到实体上，用入参）
+        validateKnowledgeBases(agent, userId);
+        // 6. 校验密钥存在、归属当前用户且已启用
         validateApiKey(agent.getApiKeyId(), userId);
-        // 6. 保留入参不可覆盖的字段，并刷新更新时间
+        // 7. 保留入参不可覆盖的字段，并刷新更新时间
         agent.setUserId(existing.getUserId());
         agent.setEnabled(existing.getEnabled());
         agent.setCreatedAt(existing.getCreatedAt());
         agent.setUpdatedAt(LocalDateTime.now());
-        // 7. 落库更新
+        // 8. 落库更新
         agentRepository.update(agent);
         return agent;
     }
@@ -150,5 +158,22 @@ public class AgentDomainServiceImpl implements IAgentDomainService {
                 agent.getTools(),
                 null);
         toolRuntimePort.validateBindings(effectiveToolIds);
+    }
+
+    /**
+     * 校验知识库绑定：去重，并确认每个知识库都存在且属于当前用户。
+     *
+     * 在配置阶段就拦下来，比等到对话时检索失败再排查要省事得多。
+     */
+    private void validateKnowledgeBases(AgentEntity agent, String userId) {
+        agent.normalizeKnowledgeBaseIds();
+        List<String> knowledgeBaseIds = agent.getKnowledgeBaseIds();
+        if (knowledgeBaseIds == null || knowledgeBaseIds.isEmpty()) {
+            return;
+        }
+        for (String knowledgeBaseId : knowledgeBaseIds) {
+            // getKnowledgeBase 内部会校验归属，不存在或不属于当前用户都会抛异常
+            ragDomainService.getKnowledgeBase(knowledgeBaseId, userId);
+        }
     }
 }

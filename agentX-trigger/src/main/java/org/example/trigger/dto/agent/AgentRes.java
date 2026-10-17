@@ -41,6 +41,9 @@ public class AgentRes {
     /** 高级工具覆盖列表 */
     private java.util.List<String> tools;
 
+    /** 绑定的知识库ID列表 */
+    private java.util.List<String> knowledgeBaseIds;
+
     /** 智能体状态 */
     private Boolean enabled;
 
