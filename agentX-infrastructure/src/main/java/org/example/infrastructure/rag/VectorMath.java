@@ -12,8 +12,10 @@ public final class VectorMath {
     /**
      * 余弦相似度：cos(a, b) = (a · b) / (|a| * |b|)。
      *
-     * 契约（MysqlVectorStoreAdapter 依赖这几条，改动前先看这里）：
-     * 返回值范围 [-1, 1]，越大越相近，检索按它降序排序；
+     * 线上检索已交给 pgvector 的 &lt;=&gt;，这里保留一份纯 Java 实现，用于对照原理和边界处理。
+     *
+     * 契约（与 pgvector 的 vector_cosine_ops 一致）：
+     * 返回值范围 [-1, 1]，越大越相近；
      * 维度不一致、入参为 null 或长度为 0 时抛 IllegalArgumentException；
      * 全零向量返回 0，不产生 NaN 或 Infinity。
      */

@@ -97,7 +97,7 @@ public class RagDomainServiceImpl implements IRagDomainService {
     }
 
     @Override
-    @Transactional
+    @Transactional("ragTransactionManager")
     public void deleteKnowledgeBase(String id, String userId) {
         requireKnowledgeBase(id, userId);
         for (KnowledgeDocumentEntity document : knowledgeDocumentRepository.queryByKnowledgeBaseId(id)) {

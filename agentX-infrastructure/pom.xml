@@ -35,6 +35,13 @@
             <groupId>org.example</groupId>
             <artifactId>agentX-domain</artifactId>
         </dependency>
+
+        <!-- 知识库切到 PostgreSQL 时使用的驱动；向量计算由 pgvector 扩展在库内完成 -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
     </dependencies>
 
     <build>

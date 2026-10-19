@@ -7,8 +7,8 @@ import java.util.List;
 /**
  * 向量检索端口。
  *
- * 当前实现是"取出全量分片在应用层算相似度"，
- * 换成 pgvector、Milvus 这类专用向量库时，只需要换掉这个端口的实现，
+ * 当前实现是 pgvector：向量以 vector 类型入库，检索由数据库用 &lt;=&gt; 算余弦距离，
+ * 并交给 HNSW 索引取 topK。换成 Milvus、Qdrant 之类只需换掉这个端口的实现，
  * 检索调用方和入库链路都不用动。
  */
 public interface VectorStorePort {

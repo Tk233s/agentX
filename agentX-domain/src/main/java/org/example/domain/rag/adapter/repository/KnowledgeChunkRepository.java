@@ -12,10 +12,9 @@ public interface KnowledgeChunkRepository {
     void batchSave(List<KnowledgeChunkEntity> chunks);
 
     /**
-     * 取出某个用户某个知识库下的全部分片，供应用层做相似度计算。
+     * 取出某个用户某个知识库下的全部分片。
      *
-     * 当前量级直查全量即可；真到了需要近似索引的规模，
-     * 应收窄成"由向量库直接返回 top-k"，这个端口就是替换点。
+     * 只服务于入库/删除这类批量操作；topK 相似度检索由 VectorStorePort 负责。
      */
     List<KnowledgeChunkEntity> queryByKnowledgeBaseId(String knowledgeBaseId, String userId);
 
