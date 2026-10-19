@@ -22,6 +22,7 @@ public class PgVectorStoreAdapter implements VectorStorePort {
 
     private static final String SEARCH_SQL = """
             SELECT c.id,
+                   c.knowledge_base_id,
                    c.document_id,
                    d.file_name,
                    c.content,
@@ -50,6 +51,7 @@ public class PgVectorStoreAdapter implements VectorStorePort {
         return jdbcTemplate.query(
                 SEARCH_SQL,
                 (rs, rowNum) -> new ChunkMatch(
+                        rs.getString("knowledge_base_id"),
                         rs.getString("id"),
                         rs.getString("document_id"),
                         rs.getString("file_name"),

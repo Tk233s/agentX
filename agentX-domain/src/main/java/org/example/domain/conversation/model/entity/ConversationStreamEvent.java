@@ -1,7 +1,10 @@
 package org.example.domain.conversation.model.entity;
 
+import org.example.domain.conversation.model.valobj.KnowledgeCitation;
 import org.example.domain.conversation.model.valobj.TokenUsage;
 import org.example.domain.session.model.valobj.SessionTokenBudget;
+
+import java.util.List;
 
 /**
  * 对话领域流式事件，HTTP 层负责转换成 SSE。
@@ -21,7 +24,8 @@ public record ConversationStreamEvent(
         Long tokenLimit,
         Long usedTokens,
         Long remainingTokens,
-        Boolean limitReached
+        Boolean limitReached,
+        List<KnowledgeCitation> citations
 ) {
 
     public enum EventType {
@@ -40,14 +44,15 @@ public record ConversationStreamEvent(
         return new ConversationStreamEvent(
                 EventType.START, null, messageId, model, provider,
                 null, null, null, null, null, null,
-                tokenBudget.limit(), tokenBudget.usedTokens(), tokenBudget.remainingTokens(), tokenBudget.isExhausted());
+                tokenBudget.limit(), tokenBudget.usedTokens(), tokenBudget.remainingTokens(), tokenBudget.isExhausted(),
+                null);
     }
 
     public static ConversationStreamEvent delta(String content) {
         return new ConversationStreamEvent(
                 EventType.DELTA, content, null, null, null,
                 null, null, null, null, null, null,
-                null, null, null, null);
+                null, null, null, null, null);
     }
 
     public static ConversationStreamEvent usage(TokenUsage usage) {
@@ -55,7 +60,7 @@ public record ConversationStreamEvent(
                 EventType.USAGE, null, null, null, null,
                 usage.promptTokens(), usage.completionTokens(), usage.totalTokens(), usage.source(),
                 null, null,
-                null, null, null, null);
+                null, null, null, null, null);
     }
 
     public static ConversationStreamEvent done(
@@ -63,18 +68,20 @@ public record ConversationStreamEvent(
             String finishReason,
             Long latencyMs,
             TokenUsage usage,
-            SessionTokenBudget tokenBudget) {
+            SessionTokenBudget tokenBudget,
+            List<KnowledgeCitation> citations) {
         return new ConversationStreamEvent(
                 EventType.DONE, null, messageId, null, null,
                 usage.promptTokens(), usage.completionTokens(), usage.totalTokens(), usage.source(),
                 finishReason, latencyMs,
-                tokenBudget.limit(), tokenBudget.usedTokens(), tokenBudget.remainingTokens(), tokenBudget.isExhausted());
+                tokenBudget.limit(), tokenBudget.usedTokens(), tokenBudget.remainingTokens(), tokenBudget.isExhausted(),
+                citations);
     }
 
     public static ConversationStreamEvent error(String message) {
         return new ConversationStreamEvent(
                 EventType.ERROR, message, null, null, null,
                 null, null, null, null, null, null,
-                null, null, null, null);
+                null, null, null, null, null);
     }
 }

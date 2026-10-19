@@ -174,10 +174,19 @@ public class AgentEntity {
 
     /**
      * 统一能力模式：空值默认普通对话，非法值由领域校验统一拦截。
+     *
+     * RESEARCH 是已废弃模式。旧 Agent 没有显式工具时等价于普通对话，
+     * 有显式工具时等价于自定义模式。
      */
     public void normalizeCapabilityProfile() {
         if (capabilityProfile == null || capabilityProfile.isBlank()) {
             capabilityProfile = AgentCapabilityProfile.CHAT.name();
+            return;
+        }
+        if ("RESEARCH".equalsIgnoreCase(capabilityProfile.trim())) {
+            capabilityProfile = tools == null || tools.isEmpty()
+                    ? AgentCapabilityProfile.CHAT.name()
+                    : AgentCapabilityProfile.CUSTOM.name();
             return;
         }
         capabilityProfile = AgentCapabilityProfile.parse(capabilityProfile).name();

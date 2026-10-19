@@ -934,6 +934,62 @@ textarea:disabled {
   content: "·";
 }
 
+.message-citations {
+  max-width: 760px;
+  margin-top: 8px;
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+
+.message-citations summary {
+  width: fit-content;
+  cursor: pointer;
+  color: var(--accent);
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.message-citations ul {
+  margin: 7px 0 0;
+  padding: 0;
+  list-style: none;
+  border-left: 2px solid var(--line);
+}
+
+.message-citations li {
+  padding: 7px 0 7px 10px;
+}
+
+.message-citations li + li {
+  border-top: 1px solid var(--line);
+}
+
+.message-citation-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.message-citation-head strong {
+  min-width: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.message-citation-head span {
+  flex: none;
+  color: var(--ink-faint);
+  font-size: 11px;
+}
+
+.message-citations p {
+  margin: 3px 0 0;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .typing-dots {
   display: inline-flex;
   padding: 2px 0;

@@ -10,6 +10,7 @@ import org.example.domain.conversation.adapter.port.LLMPort;
 import org.example.domain.conversation.adapter.port.TokenEstimatorPort;
 import org.example.domain.conversation.model.valobj.ContextSummaryPolicy;
 import org.example.domain.conversation.model.valobj.ConversationContext;
+import org.example.domain.conversation.model.valobj.KnowledgeCitation;
 import org.example.domain.conversation.model.entity.ConversationStreamEvent;
 import org.example.domain.conversation.model.entity.LLMEntity;
 import org.example.domain.conversation.model.entity.LLMResult;
@@ -63,7 +64,13 @@ public class ConversationServiceImpl implements IConversationService {
     private static final int MAX_SUMMARY_CALLS_PER_TURN = 3;
 
     /** 一次对话最多注入多少个检索片段，避免拼进 System Prompt 的资料挤占对话窗口。 */
-    private static final int MAX_KNOWLEDGE_CHUNKS = 4;
+    private static final int MAX_KNOWLEDGE_CHUNKS = 3;
+
+    /** 低于该余弦相似度的片段只视为弱相关，不进入 Prompt，也不展示给用户。 */
+    private static final double MIN_KNOWLEDGE_SCORE = 0.55D;
+
+    /** 引用片段只用于前端展示，截断后避免重复传输整段知识库正文。 */
+    private static final int CITATION_SNIPPET_LENGTH = 120;
 
     private static final String SUMMARY_SYSTEM_PROMPT = """
             你是会话记忆整理器。请把已有摘要和新增历史合并成新的会话记忆。
@@ -229,7 +236,8 @@ public class ConversationServiceImpl implements IConversationService {
                         normalizeFinishReason(finishReasonRef.get()),
                         resolveLatency.get(),
                         resolveStreamUsage.get(),
-                        tokenBudgetRef.get())))
+                        tokenBudgetRef.get(),
+                        prepared.citations())))
                 .subscribeOn(Schedulers.boundedElastic());
 
         return Flux.concat(
@@ -355,7 +363,8 @@ public class ConversationServiceImpl implements IConversationService {
 
         // 5. 按 Agent 绑定的知识库检索，把资料块拼到 System Prompt 上。
         //    检索必须在组装上下文之前完成：资料块本身也占窗口，先拼进来才能被 Token 估算算进去。
-        String systemPrompt = appendKnowledgeBlock(agent.getSystemPrompt(), retrieveKnowledge(agent, userId, content));
+        List<ChunkMatch> knowledgeMatches = retrieveKnowledge(agent, userId, content);
+        String systemPrompt = appendKnowledgeBlock(agent.getSystemPrompt(), knowledgeMatches);
 
         // 6. 查历史消息（包含刚保存的当前用户消息），组装“摘要 + 最近原文”
         ContextWindow contextWindow = contextWindowPort.getContextWindow(agent.getModelId());
@@ -401,7 +410,7 @@ public class ConversationServiceImpl implements IConversationService {
                 .permissionMode(session.getPermissionMode())
                 .build();
 
-        return new PreparedConversation(llmEntity, tokenBudget);
+        return new PreparedConversation(llmEntity, tokenBudget, toCitations(knowledgeMatches));
     }
 
     /**
@@ -799,6 +808,11 @@ public class ConversationServiceImpl implements IConversationService {
         if (matches.isEmpty()) {
             return List.of();
         }
+        matches.removeIf(match -> !Double.isFinite(match.score())
+                || match.score() < MIN_KNOWLEDGE_SCORE);
+        if (matches.isEmpty()) {
+            return List.of();
+        }
         matches.sort((left, right) -> Double.compare(right.score(), left.score()));
         return matches.size() > MAX_KNOWLEDGE_CHUNKS
                 ? new ArrayList<>(matches.subList(0, MAX_KNOWLEDGE_CHUNKS))
@@ -814,6 +828,28 @@ public class ConversationServiceImpl implements IConversationService {
         }
         String basePrompt = systemPrompt == null ? "" : systemPrompt;
         return basePrompt + buildKnowledgeBlock(matches);
+    }
+
+    /**
+     * 把内部检索命中转换为前端可见的轻量引用，避免把完整片段再次传给客户端。
+     */
+    private List<KnowledgeCitation> toCitations(List<ChunkMatch> matches) {
+        if (matches == null || matches.isEmpty()) {
+            return List.of();
+        }
+        List<KnowledgeCitation> citations = new ArrayList<>(matches.size());
+        for (ChunkMatch match : matches) {
+            String snippet = match.content() == null ? "" : match.content().trim();
+            if (snippet.length() > CITATION_SNIPPET_LENGTH) {
+                snippet = snippet.substring(0, CITATION_SNIPPET_LENGTH) + "...";
+            }
+            citations.add(new KnowledgeCitation(
+                    match.knowledgeBaseId(),
+                    match.documentName(),
+                    snippet,
+                    match.score()));
+        }
+        return citations;
     }
 
     /**
@@ -931,7 +967,10 @@ public class ConversationServiceImpl implements IConversationService {
                 + "）";
     }
 
-    private record PreparedConversation(LLMEntity llmEntity, SessionTokenBudget tokenBudget) {
+    private record PreparedConversation(
+            LLMEntity llmEntity,
+            SessionTokenBudget tokenBudget,
+            List<KnowledgeCitation> citations) {
     }
 
     private record GeneratedSummary(String content, TokenUsage usage) {

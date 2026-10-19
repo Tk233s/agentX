@@ -103,6 +103,7 @@ function createEmptyStreamMetadata() {
     usageSource: "",
     finishReason: "",
     latencyMs: null,
+    citations: [],
   };
 }
 
@@ -509,7 +510,6 @@ const CAPABILITY_PROFILES = [
   { id: "CHAT", name: "普通对话", description: "只对话，不启用工具" },
   { id: "CODE_READONLY", name: "代码只读", description: "只读代码工作区" },
   { id: "CODE", name: "代码工作区", description: "可读写工作区文件" },
-  { id: "RESEARCH", name: "知识库研究", description: "检索知识库" },
   { id: "CUSTOM", name: "自定义", description: "只使用下方手动绑定的工具" },
 ];
 
@@ -528,7 +528,6 @@ const CAPABILITY_DEFAULT_TOOLS = {
   CHAT: [],
   CODE_READONLY: ["file-read"],
   CODE: ["file-read", "file-write"],
-  RESEARCH: [],
   CUSTOM: [],
 };
 
@@ -832,6 +831,7 @@ function renderMessage(message, pending = false) {
       : '<span class="typing-dots" aria-label="正在生成回复"><span></span><span></span><span></span></span>'
       : escapeHtml(message.content);
   const stats = isUser ? "" : renderMessageStats(message);
+  const citations = !isUser && !pending ? renderMessageCitations(message) : "";
   const copyButton = !pending && message.content
     ? `
       <button
@@ -862,6 +862,7 @@ function renderMessage(message, pending = false) {
         <div class="message-bubble">${content}</div>
         ${deliveryError}
         ${stats}
+        ${citations}
       </div>
     </article>
   `;
@@ -916,6 +917,46 @@ function renderMessageStats(message) {
         .join("")}
     </div>
   `;
+}
+
+function renderMessageCitations(message) {
+  const citations = Array.isArray(message.citations) ? message.citations : [];
+  if (!citations.length) {
+    return "";
+  }
+
+  const items = citations
+    .map((citation) => {
+      const score = Number(citation.score);
+      const scoreLabel = Number.isFinite(score) ? `相似度 ${score.toFixed(3)}` : "";
+      return `
+        <li>
+          <div class="message-citation-head">
+            <strong>${escapeHtml(citation.documentName || "未命名文档")}</strong>
+            ${scoreLabel ? `<span>${escapeHtml(scoreLabel)}</span>` : ""}
+          </div>
+          <p>${escapeHtml(citation.snippet || "")}</p>
+        </li>
+      `;
+    })
+    .join("");
+
+  return `
+    <details class="message-citations">
+      <summary>检索资料 (${citations.length})</summary>
+      <ul>${items}</ul>
+    </details>
+  `;
+}
+
+function attachTransientCitations(sessionId, messageId, citations) {
+  if (state.activeSessionId !== sessionId || !messageId || !citations.length) {
+    return;
+  }
+  const message = state.messages.find((item) => item.id === messageId);
+  if (message) {
+    message.citations = citations;
+  }
 }
 
 function renderChatContent() {
@@ -1395,7 +1436,7 @@ function renderKnowledgeManager() {
         <div class="empty-state agent-empty-state">
           <div class="empty-icon">${svgIcon("book", 24)}</div>
           <h2>暂无知识库</h2>
-          <p>新建知识库并上传资料后，绑定它的 Agent 会在回答前先检索这些资料。</p>
+          <p>新建知识库并上传资料后，绑定它的 Agent 会在回答前检索，达到相似度阈值的资料才会进入回答。</p>
           <button class="primary-button" type="button" data-action="new-knowledge-base">
             ${svgIcon("plus", 16)}
             <span>新建知识库</span>
@@ -2084,7 +2125,7 @@ function renderAgentEditorModal() {
                     )
                     .join("")}
                 </select>
-                <p class="form-hint">模式决定运行时自动提供的工具，普通场景无需手工绑定。</p>
+                <p class="form-hint">模式只决定自动提供的工具，知识库在下方单独绑定。</p>
               </div>
               ${
                 enabledApiKeys.length
@@ -2137,7 +2178,7 @@ function renderAgentEditorModal() {
                 state.knowledgeBases.length
                   ? `
                     <p class="form-hint">
-                      勾选后，每次提问都会先用你的话去这些库里检索，命中的资料随问题一起发给模型。
+                      勾选后，每次提问都会检索这些库；只有相似度达到阈值的资料才会进入回答并展示。
                     </p>
                     <div class="tool-option-grid">
                       ${state.knowledgeBases
@@ -3580,6 +3621,7 @@ async function sendMessage(content) {
               usageSource: payload.usageSource || state.streamMetadata.usageSource,
               finishReason: payload.finishReason || "",
               latencyMs: payload.latencyMs,
+              citations: Array.isArray(payload.citations) ? payload.citations : [],
             };
             if (payload.limitReached) {
               showToast("info", "Token 额度已用完", "本次回答已完成，该会话后续消息将无法发送。");
@@ -3599,8 +3641,14 @@ async function sendMessage(content) {
       streamController.signal,
     );
 
+    const completedMessageId = state.streamMetadata.messageId;
+    const completedCitations = Array.isArray(state.streamMetadata.citations)
+      ? state.streamMetadata.citations
+      : [];
     await loadMessages(session.id, { render: false });
+    attachTransientCitations(session.id, completedMessageId, completedCitations);
     await refreshWorkspace({ render: false, quiet: true });
+    attachTransientCitations(session.id, completedMessageId, completedCitations);
   } catch (error) {
     if (error.name === "AbortError") {
       return;

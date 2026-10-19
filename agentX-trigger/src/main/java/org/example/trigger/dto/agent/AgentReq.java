@@ -39,7 +39,7 @@ public class AgentReq {
     /** 模型ID */
     private String modelId;
 
-    /** 能力模式：CHAT、CODE_READONLY、CODE、RESEARCH、CUSTOM */
+    /** 能力模式：CHAT、CODE_READONLY、CODE、CUSTOM */
     private String capabilityProfile;
 
     /** 高级工具覆盖列表，普通场景不需要填写 */

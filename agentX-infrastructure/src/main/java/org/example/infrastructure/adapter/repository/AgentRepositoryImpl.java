@@ -101,6 +101,10 @@ public class AgentRepositoryImpl implements AgentRepository {
             agent.setKnowledgeBaseIds(
                     GSON.fromJson(po.getKnowledgeBaseIdsJson(), new TypeToken<List<String>>() {}.getType()));
         }
+        // 兼容历史 RESEARCH 数据，读取时统一转换为当前模式。
+        agent.normalizeTools();
+        agent.normalizeKnowledgeBaseIds();
+        agent.normalizeCapabilityProfile();
         agent.setEnabled(po.getEnabled());
         agent.setUserId(po.getUserId());
         agent.setCreatedAt(po.getCreatedAt());

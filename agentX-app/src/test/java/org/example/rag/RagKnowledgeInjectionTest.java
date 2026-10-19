@@ -8,10 +8,13 @@ import org.example.domain.conversation.adapter.port.ContextSummaryPolicyPort;
 import org.example.domain.conversation.adapter.port.ContextWindowPort;
 import org.example.domain.conversation.adapter.port.LLMPort;
 import org.example.domain.conversation.adapter.port.TokenEstimatorPort;
+import org.example.domain.conversation.model.entity.ConversationStreamEvent;
 import org.example.domain.conversation.model.entity.LLMEntity;
 import org.example.domain.conversation.model.entity.LLMResult;
+import org.example.domain.conversation.model.entity.LLMStreamChunk;
 import org.example.domain.conversation.model.valobj.ContextSummaryPolicy;
 import org.example.domain.conversation.model.valobj.ContextWindow;
+import org.example.domain.conversation.model.valobj.KnowledgeCitation;
 import org.example.domain.conversation.model.valobj.TokenUsage;
 import org.example.domain.conversation.service.Impl.ConversationServiceImpl;
 import org.example.domain.message.model.entity.MessageEntity;
@@ -19,14 +22,17 @@ import org.example.domain.message.service.IMessageDomainService;
 import org.example.domain.rag.model.valobj.ChunkMatch;
 import org.example.domain.rag.service.IRagDomainService;
 import org.example.domain.session.model.entity.SessionEntity;
+import org.example.domain.session.model.valobj.SessionTokenBudget;
 import org.example.domain.session.service.ISessionDomainService;
 import org.example.domain.tool.adapter.port.ToolRuntimePort;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
+import reactor.core.publisher.Flux;
 
 import java.util.List;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -49,9 +55,14 @@ public class RagKnowledgeInjectionTest {
     @Test
     public void appendsRetrievedChunksToSystemPrompt() {
         Fixture fixture = fixture(List.of("kb-1"));
-        when(fixture.ragDomainService.search(eq("kb-1"), eq("user-1"), eq("亮点能换新吗"), anyInt()))
+        when(fixture.ragDomainService.search(eq("kb-1"), eq("user-1"), eq("亮点能换新吗"), eq(3)))
                 .thenReturn(List.of(new ChunkMatch(
-                        "chunk-1", "doc-1", "售后政策.txt", "亮点达到 3 个及以上可以申请换新。", 0.87)));
+                        "kb-1",
+                        "chunk-1",
+                        "doc-1",
+                        "售后政策.txt",
+                        "亮点达到 3 个及以上可以申请换新。",
+                        0.87)));
         when(fixture.llmPort.call(any(LLMEntity.class)))
                 .thenReturn(new LLMResult("可以换新", TokenUsage.provider(10, 2, 12), "stop"));
 
@@ -89,6 +100,79 @@ public class RagKnowledgeInjectionTest {
 
         verify(fixture.ragDomainService, never())
                 .search(anyString(), anyString(), anyString(), anyInt());
+    }
+
+    @Test
+    public void streamDoneContainsTruncatedKnowledgeCitations() {
+        Fixture fixture = fixture(List.of("kb-1"));
+        String fullContent = "A".repeat(130);
+        when(fixture.ragDomainService.search(eq("kb-1"), eq("user-1"), eq("亮点能换新吗"), eq(3)))
+                .thenReturn(List.of(new ChunkMatch(
+                        "kb-1",
+                        "chunk-1",
+                        "doc-1",
+                        "售后政策.txt",
+                        fullContent,
+                        0.87)));
+        when(fixture.llmPort.stream(any(LLMEntity.class)))
+                .thenReturn(Flux.just(new LLMStreamChunk(
+                        "可以换新",
+                        TokenUsage.provider(10, 2, 12),
+                        "stop")));
+        when(fixture.sessionDomainService.addUsedTokens(fixture.sessionId, fixture.userId, 12L))
+                .thenReturn(SessionTokenBudget.of(null, 12L));
+
+        List<ConversationStreamEvent> events = fixture.service
+                .streamConversation(fixture.sessionId, fixture.userId, "亮点能换新吗")
+                .collectList()
+                .block();
+
+        ConversationStreamEvent done = events.stream()
+                .filter(event -> event.type() == ConversationStreamEvent.EventType.DONE)
+                .findFirst()
+                .orElseThrow();
+        assertEquals(1, done.citations().size());
+        KnowledgeCitation citation = done.citations().get(0);
+        assertEquals("kb-1", citation.knowledgeBaseId());
+        assertEquals("售后政策.txt", citation.documentName());
+        assertEquals("A".repeat(120) + "...", citation.snippet());
+        assertEquals(0.87, citation.score(), 0.000001);
+    }
+
+    @Test
+    public void discardsKnowledgeMatchesBelowSimilarityThreshold() {
+        Fixture fixture = fixture(List.of("kb-1"));
+        when(fixture.ragDomainService.search(eq("kb-1"), eq("user-1"), eq("1+1等于几"), eq(3)))
+                .thenReturn(List.of(new ChunkMatch(
+                        "kb-1",
+                        "chunk-1",
+                        "doc-1",
+                        "售后政策.txt",
+                        "亮点达到 3 个及以上可以申请换新。",
+                        0.54)));
+        when(fixture.llmPort.stream(any(LLMEntity.class)))
+                .thenReturn(Flux.just(new LLMStreamChunk(
+                        "等于 2",
+                        TokenUsage.provider(8, 2, 10),
+                        "stop")));
+        when(fixture.sessionDomainService.addUsedTokens(fixture.sessionId, fixture.userId, 10L))
+                .thenReturn(SessionTokenBudget.of(null, 10L));
+
+        List<ConversationStreamEvent> events = fixture.service
+                .streamConversation(fixture.sessionId, fixture.userId, "1+1等于几")
+                .collectList()
+                .block();
+
+        ConversationStreamEvent done = events.stream()
+                .filter(event -> event.type() == ConversationStreamEvent.EventType.DONE)
+                .findFirst()
+                .orElseThrow();
+        assertTrue("低相似度命中不应展示", done.citations().isEmpty());
+
+        ArgumentCaptor<LLMEntity> captor = ArgumentCaptor.forClass(LLMEntity.class);
+        verify(fixture.llmPort).stream(captor.capture());
+        assertFalse("低相似度命中不应拼入 Prompt",
+                String.valueOf(captor.getValue().getSystemPrompt()).contains("<knowledge>"));
     }
 
     private String capturedSystemPrompt(Fixture fixture) {
@@ -158,7 +242,13 @@ public class RagKnowledgeInjectionTest {
         ReflectionTestUtils.setField(service, "toolRuntimePort", toolRuntimePort);
         ReflectionTestUtils.setField(service, "ragDomainService", ragDomainService);
 
-        return new Fixture(service, llmPort, ragDomainService, sessionId, userId);
+        return new Fixture(
+                service,
+                sessionDomainService,
+                llmPort,
+                ragDomainService,
+                sessionId,
+                userId);
     }
 
     private MessageEntity userMessage(String content) {
@@ -170,6 +260,7 @@ public class RagKnowledgeInjectionTest {
 
     private record Fixture(
             ConversationServiceImpl service,
+            ISessionDomainService sessionDomainService,
             LLMPort llmPort,
             IRagDomainService ragDomainService,
             String sessionId,

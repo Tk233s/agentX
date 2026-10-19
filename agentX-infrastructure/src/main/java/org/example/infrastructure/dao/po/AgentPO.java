@@ -34,7 +34,7 @@ public class AgentPO {
     /** 模型ID */
     private String modelId;
 
-    /** 能力模式：CHAT、CODE_READONLY、CODE、RESEARCH、CUSTOM */
+    /** 能力模式：CHAT、CODE_READONLY、CODE、CUSTOM */
     private String capabilityProfile;
 
     /** 工具名称列表（JSON 数组字符串）：如 ["weather", "file-read"] */

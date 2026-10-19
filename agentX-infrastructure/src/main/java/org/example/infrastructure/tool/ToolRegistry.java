@@ -88,11 +88,10 @@ public class ToolRegistry implements ToolRuntimePort {
      * 这里只声明"模式自带什么工具"，不涉及 Agent 具体配置；
      * 文件工具已拆成 file-read 与 file-write 两个 ID，
      * 因此 CODE_READONLY 只挂读取组，"能读不能写"不需要再退化成空列表。
-     * RESEARCH 等知识库检索工具落地后再补充 knowledge_search。
      */
     private static List<String> defaultToolIds(AgentCapabilityProfile profile) {
         return switch (profile) {
-            case CHAT, RESEARCH, CUSTOM -> List.of();
+            case CHAT, CUSTOM -> List.of();
             case CODE -> List.of("file-read", "file-write");
             case CODE_READONLY -> List.of("file-read");
         };

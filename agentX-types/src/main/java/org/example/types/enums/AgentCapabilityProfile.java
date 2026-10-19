@@ -20,9 +20,6 @@ public enum AgentCapabilityProfile {
     /** 代码工作区模式。 */
     CODE,
 
-    /** 研究模式，后续接入知识库检索工具。 */
-    RESEARCH,
-
     /** 自定义模式，显式工具列表仍然生效。 */
     CUSTOM;
 
