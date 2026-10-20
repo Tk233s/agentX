@@ -11,6 +11,7 @@ import org.example.trigger.dto.rag.KnowledgeBaseRes;
 import org.example.trigger.dto.rag.KnowledgeDocumentRes;
 import org.example.trigger.dto.rag.KnowledgeSearchReq;
 import org.example.trigger.dto.rag.KnowledgeSearchRes;
+import org.example.trigger.dto.rag.KnowledgeRetrievalConfigReq;
 import org.example.types.context.UserContext;
 import org.example.types.enums.ResponseCode;
 import org.example.types.exception.AppException;
@@ -76,6 +77,23 @@ public class RagController {
         return Response.success(RagAssembler.toRes(
                 entity,
                 knowledgeChunkRepository.countByKnowledgeBaseId(entity.getId())));
+    }
+
+    /**
+     * 更新对话检索阈值和 TopK；只影响后续对话，不需要重新向量化。
+     */
+    @PostMapping("/retrieval-config")
+    public Response<KnowledgeBaseRes> updateRetrievalConfig(
+            @RequestBody @Validated KnowledgeRetrievalConfigReq req) {
+        String userId = UserContext.requireCurrentUserId();
+        KnowledgeBaseEntity updated = ragDomainService.updateRetrievalConfig(
+                req.getId(),
+                userId,
+                req.getMinScore(),
+                req.getTopK());
+        return Response.success(RagAssembler.toRes(
+                updated,
+                knowledgeChunkRepository.countByKnowledgeBaseId(updated.getId())));
     }
 
     /**

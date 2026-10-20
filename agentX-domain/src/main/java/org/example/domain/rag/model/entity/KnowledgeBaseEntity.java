@@ -19,10 +19,13 @@ public class KnowledgeBaseEntity {
     public static final int DEFAULT_DIMENSION = 1024;
     public static final int DEFAULT_CHUNK_SIZE = 500;
     public static final int DEFAULT_CHUNK_OVERLAP = 50;
+    public static final double DEFAULT_MIN_SCORE = 0.55D;
+    public static final int DEFAULT_TOP_K = 3;
 
     /** 单个分片的字符数上限，防止把整篇文档塞进一个分片。 */
     private static final int MAX_CHUNK_SIZE = 4000;
     private static final int MAX_NAME_LENGTH = 128;
+    private static final int MAX_TOP_K = 20;
 
     /** 主键ID */
     private String id;
@@ -51,6 +54,12 @@ public class KnowledgeBaseEntity {
     /** 相邻分片重叠长度（字符），用于避免语义被切断 */
     private Integer chunkOverlap;
 
+    /** 对话检索的最低相似度，低于该值的片段不会进入模型上下文 */
+    private Double minScore;
+
+    /** 每个知识库单次最多贡献的检索片段数 */
+    private Integer topK;
+
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -62,7 +71,9 @@ public class KnowledgeBaseEntity {
             String embeddingModel,
             Integer dimension,
             Integer chunkSize,
-            Integer chunkOverlap) {
+            Integer chunkOverlap,
+            Double minScore,
+            Integer topK) {
         KnowledgeBaseEntity entity = new KnowledgeBaseEntity();
         entity.setId(UUID.randomUUID().toString().replace("-", ""));
         entity.setUserId(userId);
@@ -73,6 +84,8 @@ public class KnowledgeBaseEntity {
         entity.setDimension(dimension == null ? DEFAULT_DIMENSION : dimension);
         entity.setChunkSize(chunkSize == null ? DEFAULT_CHUNK_SIZE : chunkSize);
         entity.setChunkOverlap(chunkOverlap == null ? DEFAULT_CHUNK_OVERLAP : chunkOverlap);
+        entity.setMinScore(minScore == null ? DEFAULT_MIN_SCORE : minScore);
+        entity.setTopK(topK == null ? DEFAULT_TOP_K : topK);
         entity.setCreatedAt(LocalDateTime.now());
         entity.setUpdatedAt(LocalDateTime.now());
         return entity;
@@ -117,6 +130,40 @@ public class KnowledgeBaseEntity {
             throw new AppException(
                     ResponseCode.ILLEGAL_PARAMETER.getCode(),
                     "分片重叠长度必须大于等于0且小于分片长度");
+        }
+        validateRetrievalConfig(minScore, topK);
+    }
+
+    /**
+     * 更新对话检索配置；历史数据缺字段时回退到默认值。
+     */
+    public void updateRetrievalConfig(Double minScore, Integer topK) {
+        double resolvedMinScore = minScore == null ? DEFAULT_MIN_SCORE : minScore;
+        int resolvedTopK = topK == null ? DEFAULT_TOP_K : topK;
+        validateRetrievalConfig(resolvedMinScore, resolvedTopK);
+        this.minScore = resolvedMinScore;
+        this.topK = resolvedTopK;
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    public double effectiveMinScore() {
+        return minScore == null ? DEFAULT_MIN_SCORE : minScore;
+    }
+
+    public int effectiveTopK() {
+        return topK == null ? DEFAULT_TOP_K : topK;
+    }
+
+    private void validateRetrievalConfig(Double minScore, Integer topK) {
+        if (minScore == null || !Double.isFinite(minScore) || minScore < 0D || minScore > 1D) {
+            throw new AppException(
+                    ResponseCode.ILLEGAL_PARAMETER.getCode(),
+                    "最低相似度必须在 0 到 1 之间");
+        }
+        if (topK == null || topK <= 0 || topK > MAX_TOP_K) {
+            throw new AppException(
+                    ResponseCode.ILLEGAL_PARAMETER.getCode(),
+                    "TopK 必须在 1 到 " + MAX_TOP_K + " 之间");
         }
     }
 }

@@ -27,6 +27,7 @@ public class MessageAssembler {
         res.setFinishReason(entity.getFinishReason());
         res.setLatencyMs(entity.getLatencyMs());
         res.setUsageSource(entity.getUsageSource());
+        res.setCitations(entity.getCitations());
         res.setCreateTime(entity.getCreatedAt());
         return res;
     }

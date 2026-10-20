@@ -27,6 +27,12 @@ public class KnowledgeBaseRes {
 
     private Integer chunkOverlap;
 
+    /** 对话检索最低相似度 */
+    private Double minScore;
+
+    /** 每个知识库单次最多贡献的片段数 */
+    private Integer topK;
+
     /** 已入库的分片总数，列表页直接展示，避免前端再查一次 */
     private Integer chunkCount;
 

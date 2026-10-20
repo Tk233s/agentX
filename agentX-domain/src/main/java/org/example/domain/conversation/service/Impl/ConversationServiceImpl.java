@@ -63,11 +63,8 @@ public class ConversationServiceImpl implements IConversationService {
 
     private static final int MAX_SUMMARY_CALLS_PER_TURN = 3;
 
-    /** 一次对话最多注入多少个检索片段，避免拼进 System Prompt 的资料挤占对话窗口。 */
-    private static final int MAX_KNOWLEDGE_CHUNKS = 3;
-
-    /** 低于该余弦相似度的片段只视为弱相关，不进入 Prompt，也不展示给用户。 */
-    private static final double MIN_KNOWLEDGE_SCORE = 0.55D;
+    /** 多个知识库合并后的硬上限，避免绑定过多知识库挤占上下文窗口。 */
+    private static final int MAX_TOTAL_KNOWLEDGE_CHUNKS = 20;
 
     /** 引用片段只用于前端展示，截断后避免重复传输整段知识库正文。 */
     private static final int CITATION_SNIPPET_LENGTH = 120;
@@ -139,6 +136,7 @@ public class ConversationServiceImpl implements IConversationService {
                 llmEntity.getProvider(),
                 normalizeFinishReason(result.finishReason()),
                 latencyMs);
+        message.setCitations(prepared.citations());
         messageDomainService.saveAssistantMessage(message);
         sessionDomainService.addUsedTokens(sessionId, userId, tokenDelta(usage));
         return reply;
@@ -194,7 +192,7 @@ public class ConversationServiceImpl implements IConversationService {
         Runnable persistReply = () -> {
             if (!reply.isEmpty() && persisted.compareAndSet(false, true)) {
                 TokenUsage finalUsage = resolveStreamUsage.get();
-                messageDomainService.saveAssistantMessage(MessageEntity.createAssistantMessage(
+                MessageEntity assistantMessage = MessageEntity.createAssistantMessage(
                         messageId,
                         sessionId,
                         reply.toString(),
@@ -202,7 +200,9 @@ public class ConversationServiceImpl implements IConversationService {
                         llmEntity.getModel(),
                         llmEntity.getProvider(),
                         normalizeFinishReason(finishReasonRef.get()),
-                        resolveLatency.get()));
+                        resolveLatency.get());
+                assistantMessage.setCitations(prepared.citations());
+                messageDomainService.saveAssistantMessage(assistantMessage);
                 tokenBudgetRef.set(sessionDomainService.addUsedTokens(
                         sessionId,
                         userId,
@@ -796,11 +796,10 @@ public class ConversationServiceImpl implements IConversationService {
         List<ChunkMatch> matches = new ArrayList<>();
         for (String knowledgeBaseId : knowledgeBaseIds) {
             try {
-                matches.addAll(ragDomainService.search(
+                matches.addAll(ragDomainService.searchForConversation(
                         knowledgeBaseId,
                         userId,
-                        query,
-                        MAX_KNOWLEDGE_CHUNKS));
+                        query));
             } catch (RuntimeException e) {
                 log.warn("知识库[{}]检索失败，本轮对话不带该库资料: {}", knowledgeBaseId, e.getMessage());
             }
@@ -808,14 +807,9 @@ public class ConversationServiceImpl implements IConversationService {
         if (matches.isEmpty()) {
             return List.of();
         }
-        matches.removeIf(match -> !Double.isFinite(match.score())
-                || match.score() < MIN_KNOWLEDGE_SCORE);
-        if (matches.isEmpty()) {
-            return List.of();
-        }
         matches.sort((left, right) -> Double.compare(right.score(), left.score()));
-        return matches.size() > MAX_KNOWLEDGE_CHUNKS
-                ? new ArrayList<>(matches.subList(0, MAX_KNOWLEDGE_CHUNKS))
+        return matches.size() > MAX_TOTAL_KNOWLEDGE_CHUNKS
+                ? new ArrayList<>(matches.subList(0, MAX_TOTAL_KNOWLEDGE_CHUNKS))
                 : matches;
     }
 

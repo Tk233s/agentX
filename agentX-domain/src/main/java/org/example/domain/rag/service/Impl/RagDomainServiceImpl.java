@@ -97,6 +97,22 @@ public class RagDomainServiceImpl implements IRagDomainService {
     }
 
     @Override
+    public KnowledgeBaseEntity updateRetrievalConfig(
+            String id,
+            String userId,
+            Double minScore,
+            Integer topK) {
+        KnowledgeBaseEntity knowledgeBase = requireKnowledgeBase(id, userId);
+        knowledgeBase.updateRetrievalConfig(minScore, topK);
+        knowledgeBaseRepository.updateRetrievalConfig(
+                id,
+                userId,
+                knowledgeBase.effectiveMinScore(),
+                knowledgeBase.effectiveTopK());
+        return knowledgeBase;
+    }
+
+    @Override
     @Transactional("ragTransactionManager")
     public void deleteKnowledgeBase(String id, String userId) {
         requireKnowledgeBase(id, userId);
@@ -194,12 +210,34 @@ public class RagDomainServiceImpl implements IRagDomainService {
     @Override
     public List<ChunkMatch> search(String knowledgeBaseId, String userId, String query, int topK) {
         KnowledgeBaseEntity knowledgeBase = requireKnowledgeBase(knowledgeBaseId, userId);
+        return search(knowledgeBase, userId, query, topK);
+    }
+
+    @Override
+    public List<ChunkMatch> searchForConversation(String knowledgeBaseId, String userId, String query) {
+        KnowledgeBaseEntity knowledgeBase = requireKnowledgeBase(knowledgeBaseId, userId);
+        return search(
+                knowledgeBase,
+                userId,
+                query,
+                knowledgeBase.effectiveTopK())
+                .stream()
+                .filter(match -> Double.isFinite(match.score())
+                        && match.score() >= knowledgeBase.effectiveMinScore())
+                .toList();
+    }
+
+    private List<ChunkMatch> search(
+            KnowledgeBaseEntity knowledgeBase,
+            String userId,
+            String query,
+            int topK) {
         if (query == null || query.isBlank()) {
             return List.of();
         }
         int limit = topK <= 0 ? DEFAULT_TOP_K : topK;
         float[] queryVector = embedTexts(knowledgeBase, userId, List.of(query.trim())).get(0);
-        return vectorStorePort.search(knowledgeBaseId, userId, queryVector, limit);
+        return vectorStorePort.search(knowledgeBase.getId(), userId, queryVector, limit);
     }
 
     /**

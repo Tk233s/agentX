@@ -19,7 +19,7 @@ import java.util.List;
 public class PgKnowledgeBaseRepositoryImpl implements KnowledgeBaseRepository {
 
     private static final String COLUMNS = "id, user_id, name, description, api_key_id, embedding_model, "
-            + "dimension, chunk_size, chunk_overlap, created_at, updated_at";
+            + "dimension, chunk_size, chunk_overlap, min_score, top_k, created_at, updated_at";
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -30,7 +30,7 @@ public class PgKnowledgeBaseRepositoryImpl implements KnowledgeBaseRepository {
     @Override
     public void save(KnowledgeBaseEntity knowledgeBase) {
         jdbcTemplate.update(
-                "INSERT INTO knowledge_base (" + COLUMNS + ") VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO knowledge_base (" + COLUMNS + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 knowledgeBase.getId(),
                 knowledgeBase.getUserId(),
                 knowledgeBase.getName(),
@@ -40,6 +40,8 @@ public class PgKnowledgeBaseRepositoryImpl implements KnowledgeBaseRepository {
                 knowledgeBase.getDimension(),
                 knowledgeBase.getChunkSize(),
                 knowledgeBase.getChunkOverlap(),
+                knowledgeBase.effectiveMinScore(),
+                knowledgeBase.effectiveTopK(),
                 toTimestamp(knowledgeBase.getCreatedAt()),
                 toTimestamp(knowledgeBase.getUpdatedAt()));
     }
@@ -74,6 +76,18 @@ public class PgKnowledgeBaseRepositoryImpl implements KnowledgeBaseRepository {
     }
 
     @Override
+    public void updateRetrievalConfig(String id, String userId, double minScore, int topK) {
+        jdbcTemplate.update(
+                "UPDATE knowledge_base SET min_score = ?, top_k = ?, updated_at = ?"
+                        + " WHERE id = ? AND user_id = ?",
+                minScore,
+                topK,
+                toTimestamp(java.time.LocalDateTime.now()),
+                id,
+                userId);
+    }
+
+    @Override
     public void deleteById(String id) {
         jdbcTemplate.update("DELETE FROM knowledge_base WHERE id = ?", id);
     }
@@ -97,6 +111,8 @@ public class PgKnowledgeBaseRepositoryImpl implements KnowledgeBaseRepository {
         entity.setDimension(rs.getInt("dimension"));
         entity.setChunkSize(rs.getInt("chunk_size"));
         entity.setChunkOverlap(rs.getInt("chunk_overlap"));
+        entity.setMinScore(rs.getDouble("min_score"));
+        entity.setTopK(rs.getInt("top_k"));
         entity.setCreatedAt(toLocalDateTime(rs.getTimestamp("created_at")));
         entity.setUpdatedAt(toLocalDateTime(rs.getTimestamp("updated_at")));
         return entity;

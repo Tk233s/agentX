@@ -13,14 +13,21 @@ import java.util.List;
  */
 public interface IRagDomainService {
 
-    /** 默认检索条数。 */
-    int DEFAULT_TOP_K = 4;
+    /** 检索测试接口未显式传 TopK 时使用的默认值。 */
+    int DEFAULT_TOP_K = KnowledgeBaseEntity.DEFAULT_TOP_K;
 
     KnowledgeBaseEntity createKnowledgeBase(KnowledgeBaseEntity knowledgeBase);
 
     List<KnowledgeBaseEntity> listKnowledgeBases(String userId);
 
     KnowledgeBaseEntity getKnowledgeBase(String id, String userId);
+
+    /** 更新知识库级别的对话检索阈值和 TopK。 */
+    KnowledgeBaseEntity updateRetrievalConfig(
+            String id,
+            String userId,
+            Double minScore,
+            Integer topK);
 
     /** 删除知识库，连同其文档、分片和落盘文件一起清理。 */
     void deleteKnowledgeBase(String id, String userId);
@@ -44,4 +51,9 @@ public interface IRagDomainService {
 
     /** 用一句话去知识库里检索最相近的分片。 */
     List<ChunkMatch> search(String knowledgeBaseId, String userId, String query, int topK);
+
+    /**
+     * 按知识库自身的阈值和 TopK 检索，只返回可以进入对话上下文的结果。
+     */
+    List<ChunkMatch> searchForConversation(String knowledgeBaseId, String userId, String query);
 }

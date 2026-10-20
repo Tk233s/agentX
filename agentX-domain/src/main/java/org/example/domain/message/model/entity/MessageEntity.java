@@ -1,9 +1,11 @@
 package org.example.domain.message.model.entity;
 
 import org.example.domain.conversation.model.valobj.TokenUsage;
+import org.example.domain.conversation.model.valobj.KnowledgeCitation;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -50,6 +52,9 @@ public class MessageEntity {
 
     /** Token来源：provider/estimated */
     private String usageSource;
+
+    /** 本轮回答使用的知识库检索资料，随消息一起保存 */
+    private List<KnowledgeCitation> citations;
 
     /** 创建时间 */
     private LocalDateTime createdAt;

@@ -23,7 +23,9 @@ public class RagAssembler {
                 req.getEmbeddingModel(),
                 req.getDimension(),
                 req.getChunkSize(),
-                req.getChunkOverlap());
+                req.getChunkOverlap(),
+                req.getMinScore(),
+                req.getTopK());
     }
 
     /** 领域实体 -> 出参 DTO */
@@ -37,6 +39,8 @@ public class RagAssembler {
         res.setDimension(entity.getDimension());
         res.setChunkSize(entity.getChunkSize());
         res.setChunkOverlap(entity.getChunkOverlap());
+        res.setMinScore(entity.effectiveMinScore());
+        res.setTopK(entity.effectiveTopK());
         res.setChunkCount(chunkCount);
         res.setCreateTime(entity.getCreatedAt());
         res.setUpdateTime(entity.getUpdatedAt());

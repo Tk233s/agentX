@@ -35,4 +35,10 @@ public class KnowledgeBaseReq {
 
     /** 相邻分片重叠长度（字符）；留空按 50 处理 */
     private Integer chunkOverlap;
+
+    /** 对话检索最低相似度；留空按 0.55 处理 */
+    private Double minScore;
+
+    /** 单个知识库单次最多进入上下文的分片数；留空按 3 处理 */
+    private Integer topK;
 }

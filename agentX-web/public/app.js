@@ -24,6 +24,7 @@ const icons = {
   save: '<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
   send: '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
+  settings: '<path d="M4 21v-7"/><path d="M4 10V3"/><path d="M12 21v-9"/><path d="M12 8V3"/><path d="M20 21v-5"/><path d="M20 12V3"/><path d="M1 14h6"/><path d="M9 8h6"/><path d="M17 16h6"/>',
   stop: '<rect width="12" height="12" x="6" y="6" rx="2" fill="currentColor" stroke="none"/>',
   tool: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
   trash: '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/>',
@@ -1477,6 +1478,8 @@ function renderKnowledgeManager() {
                   <span class="tool-param-pill">分片 ${knowledgeBase.chunkCount || 0}</span>
                   <span class="tool-param-pill">分片长度 ${knowledgeBase.chunkSize || 0}</span>
                   <span class="tool-param-pill">重叠 ${knowledgeBase.chunkOverlap || 0}</span>
+                  <span class="tool-param-pill">阈值 ${Number(knowledgeBase.minScore ?? 0.55).toFixed(2)}</span>
+                  <span class="tool-param-pill">TopK ${knowledgeBase.topK ?? 3}</span>
                   <span class="tool-param-pill">${knowledgeBaseAgentCount(knowledgeBase.id)} 个 Agent 在用</span>
                 </div>
                 <div class="knowledge-card-actions">
@@ -1498,6 +1501,14 @@ function renderKnowledgeManager() {
                     ${svgIcon("search", 14)}
                     <span>检索测试</span>
                   </button>
+                  <button
+                    class="icon-button"
+                    type="button"
+                    data-action="edit-knowledge-retrieval"
+                    data-knowledge-id="${escapeHtml(knowledgeBase.id)}"
+                    title="检索设置"
+                    aria-label="检索设置"
+                  >${svgIcon("settings", 16)}</button>
                   <button
                     class="icon-button danger"
                     type="button"
@@ -2304,8 +2315,26 @@ function renderKnowledgeEditorModal() {
                 <input id="knowledge-chunk-overlap" name="chunkOverlap" type="number" min="0" step="1" value="50" />
               </div>
             </div>
+            <div class="field-grid two-columns">
+              <div class="field">
+                <label for="knowledge-min-score">最低相似度</label>
+                <input
+                  id="knowledge-min-score"
+                  name="minScore"
+                  type="number"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value="0.55"
+                />
+              </div>
+              <div class="field">
+                <label for="knowledge-top-k">检索 TopK</label>
+                <input id="knowledge-top-k" name="topK" type="number" min="1" max="20" step="1" value="3" />
+              </div>
+            </div>
             <p class="form-hint">
-              bge-m3 输出 1024 维；维度必须和模型一致，换了模型要重新建库。
+              只有达到最低相似度的片段才会进入对话；TopK 表示每个知识库最多贡献几条资料。
             </p>
             ${
               enabledApiKeys.length
@@ -2322,6 +2351,70 @@ function renderKnowledgeEditorModal() {
             >
               ${state.knowledgeBusy ? '<span class="button-spinner"></span>' : svgIcon("plus", 16)}
               <span>创建</span>
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  `;
+}
+
+function renderKnowledgeRetrievalModal() {
+  const knowledgeBase = knowledgeBaseById(state.modal.knowledgeBaseId);
+  const minScore = Number(knowledgeBase?.minScore ?? 0.55);
+  const topK = Number(knowledgeBase?.topK ?? 3);
+
+  return `
+    <div class="modal-backdrop" data-modal-backdrop>
+      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="knowledge-retrieval-title">
+        <div class="modal-header">
+          <div>
+            <h2 class="modal-title" id="knowledge-retrieval-title">${escapeHtml(knowledgeBase?.name || "知识库")} · 检索设置</h2>
+            <p class="modal-subtitle">只影响后续对话，不需要重新向量化</p>
+          </div>
+          <button class="icon-button" type="button" data-action="close-modal" aria-label="关闭">
+            ${svgIcon("x", 18)}
+          </button>
+        </div>
+        <form id="knowledge-retrieval-form">
+          <div class="modal-body">
+            <div class="field-grid two-columns">
+              <div class="field">
+                <label for="knowledge-retrieval-min-score">最低相似度</label>
+                <input
+                  id="knowledge-retrieval-min-score"
+                  name="minScore"
+                  type="number"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value="${minScore}"
+                  required
+                />
+              </div>
+              <div class="field">
+                <label for="knowledge-retrieval-top-k">检索 TopK</label>
+                <input
+                  id="knowledge-retrieval-top-k"
+                  name="topK"
+                  type="number"
+                  min="1"
+                  max="20"
+                  step="1"
+                  value="${topK}"
+                  required
+                />
+              </div>
+            </div>
+            <p class="form-hint">
+              低于阈值的片段不会进入回答；每个知识库最多贡献 TopK 条资料。多个知识库绑定时分别计算。
+            </p>
+          </div>
+          <div class="modal-footer">
+            <button class="ghost-button" type="button" data-action="close-modal">取消</button>
+            <button class="primary-button" type="submit" ${state.knowledgeBusy ? "disabled" : ""}>
+              ${state.knowledgeBusy ? '<span class="button-spinner"></span>' : svgIcon("save", 15)}
+              <span>保存设置</span>
             </button>
           </div>
         </form>
@@ -2423,6 +2516,8 @@ function renderKnowledgeSearchModal() {
   const knowledgeBase = knowledgeBaseById(state.modal.knowledgeBaseId);
   const results = state.modal.results || [];
   const searched = Boolean(state.modal.searched);
+  const minScore = Number(knowledgeBase?.minScore ?? 0.55);
+  const configuredTopK = Number(knowledgeBase?.topK ?? 3);
 
   return `
     <div class="modal-backdrop" data-modal-backdrop>
@@ -2430,7 +2525,7 @@ function renderKnowledgeSearchModal() {
         <div class="modal-header">
           <div>
             <h2 class="modal-title" id="knowledge-search-title">${escapeHtml(knowledgeBase?.name || "知识库")} · 检索测试</h2>
-            <p class="modal-subtitle">用一句话去库里找最相近的分片，不经过模型</p>
+            <p class="modal-subtitle">进入对话的最低相似度为 ${minScore.toFixed(2)}，检索测试会保留所有候选用于对比</p>
           </div>
           <button class="icon-button" type="button" data-action="close-modal" aria-label="关闭">
             ${svgIcon("x", 18)}
@@ -2452,7 +2547,7 @@ function renderKnowledgeSearchModal() {
             </div>
             <div class="field">
               <label for="knowledge-search-top-k">返回条数</label>
-              <input id="knowledge-search-top-k" name="topK" type="number" min="1" max="20" step="1" value="${state.modal.topK || 4}" />
+              <input id="knowledge-search-top-k" name="topK" type="number" min="1" max="20" step="1" value="${state.modal.topK || configuredTopK}" />
             </div>
             <div class="knowledge-card-actions">
               <button class="primary-button" type="submit" ${state.knowledgeBusy ? "disabled" : ""}>
@@ -2466,15 +2561,21 @@ function renderKnowledgeSearchModal() {
               results.length
                 ? results
                     .map(
-                      (match) => `
-                        <article class="search-hit">
+                      (match) => {
+                        const score = Number(match.score || 0);
+                        const eligible = score >= minScore;
+                        return `
+                        <article class="search-hit ${eligible ? "is-eligible" : "is-below-threshold"}">
                           <div class="search-hit-header">
                             <strong>${escapeHtml(match.documentName || "未知文档")}</strong>
-                            <span class="search-score">相似度 ${Number(match.score || 0).toFixed(4)}</span>
+                            <span class="search-score">
+                              相似度 ${score.toFixed(4)} · ${eligible ? "可进入回答" : "低于阈值"}
+                            </span>
                           </div>
                           <p>${escapeHtml(match.content)}</p>
                         </article>
-                      `,
+                      `;
+                      },
                     )
                     .join("")
                 : searched
@@ -2822,6 +2923,10 @@ function renderModal() {
 
   if (state.modal.type === "knowledge-editor") {
     return renderKnowledgeEditorModal();
+  }
+
+  if (state.modal.type === "knowledge-retrieval") {
+    return renderKnowledgeRetrievalModal();
   }
 
   if (state.modal.type === "knowledge-documents") {
@@ -3779,7 +3884,7 @@ function openDeleteApiKeyModal(apiKeyId) {
   renderWorkspace();
 }
 
-function optionalIntegerField(value, { min, label }) {
+function optionalIntegerField(value, { min, max = Number.POSITIVE_INFINITY, label }) {
   const text = String(value ?? "").trim();
   if (!text) {
     return null;
@@ -3788,11 +3893,28 @@ function optionalIntegerField(value, { min, label }) {
   if (!Number.isInteger(number) || number < min) {
     throw new ApiError(`${label}必须是不小于 ${min} 的整数`);
   }
+  if (number > max) {
+    throw new ApiError(`${label}不能大于 ${max}`);
+  }
+  return number;
+}
+
+function requiredNumberField(value, { min, max, label }) {
+  const text = String(value ?? "").trim();
+  const number = Number(text);
+  if (!text || !Number.isFinite(number) || number < min || number > max) {
+    throw new ApiError(`${label}必须在 ${min} 到 ${max} 之间`);
+  }
   return number;
 }
 
 function openKnowledgeEditor() {
   state.modal = { type: "knowledge-editor" };
+  renderWorkspace();
+}
+
+function openKnowledgeRetrieval(knowledgeBaseId) {
+  state.modal = { type: "knowledge-retrieval", knowledgeBaseId };
   renderWorkspace();
 }
 
@@ -3807,11 +3929,12 @@ function openDeleteKnowledgeDocumentModal(documentId, knowledgeBaseId) {
 }
 
 function openKnowledgeSearch(knowledgeBaseId) {
+  const knowledgeBase = knowledgeBaseById(knowledgeBaseId);
   state.modal = {
     type: "knowledge-search",
     knowledgeBaseId,
     query: "",
-    topK: 4,
+    topK: Number(knowledgeBase?.topK ?? 3),
     results: [],
     searched: false,
   };
@@ -3868,6 +3991,12 @@ async function saveKnowledgeBase(form) {
       dimension: optionalIntegerField(formData.get("dimension"), { min: 1, label: "向量维度" }),
       chunkSize: optionalIntegerField(formData.get("chunkSize"), { min: 1, label: "分片长度" }),
       chunkOverlap: optionalIntegerField(formData.get("chunkOverlap"), { min: 0, label: "分片重叠" }),
+      minScore: requiredNumberField(formData.get("minScore"), {
+        min: 0,
+        max: 1,
+        label: "最低相似度",
+      }),
+      topK: optionalIntegerField(formData.get("topK"), { min: 1, max: 20, label: "TopK" }),
     };
     if (!payload.apiKeyId) {
       throw new ApiError("请选择用于向量化的 API 密钥");
@@ -3903,6 +4032,54 @@ async function saveKnowledgeBase(form) {
     } catch {
       // 列表刷新失败不影响创建结果，下一次手动刷新即可
     }
+    state.knowledgeBusy = false;
+    renderWorkspace();
+  }
+}
+
+async function saveKnowledgeRetrieval(form) {
+  const knowledgeBaseId = state.modal?.knowledgeBaseId;
+  const knowledgeBase = knowledgeBaseById(knowledgeBaseId);
+  if (!knowledgeBase) {
+    showToast("error", "保存失败", "知识库不存在，请刷新后重试");
+    return;
+  }
+
+  let minScore;
+  let topK;
+  try {
+    const formData = new FormData(form);
+    minScore = requiredNumberField(formData.get("minScore"), {
+      min: 0,
+      max: 1,
+      label: "最低相似度",
+    });
+    topK = optionalIntegerField(formData.get("topK"), { min: 1, max: 20, label: "TopK" });
+  } catch (error) {
+    showToast("error", "保存失败", error.message);
+    return;
+  }
+
+  state.knowledgeBusy = true;
+  renderWorkspace();
+  try {
+    const updated = await apiRequest("/rag/knowledge-base/retrieval-config", {
+      method: "POST",
+      body: { id: knowledgeBase.id, minScore, topK },
+    });
+    state.knowledgeBases = state.knowledgeBases.map((item) =>
+      item.id === updated.id ? updated : item,
+    );
+    state.modal = null;
+    showToast("success", "检索设置已更新", "下一次对话会使用新的阈值和 TopK");
+  } catch (error) {
+    if (error.code === "401") {
+      clearAuth();
+      renderLogin(error.message);
+      return;
+    }
+    showToast("error", "保存失败", error.message);
+  } finally {
     state.knowledgeBusy = false;
     renderWorkspace();
   }
@@ -4213,6 +4390,12 @@ app.addEventListener("submit", async (event) => {
     return;
   }
 
+  if (form.id === "knowledge-retrieval-form") {
+    event.preventDefault();
+    await saveKnowledgeRetrieval(form);
+    return;
+  }
+
   if (form.id === "knowledge-upload-form") {
     event.preventDefault();
     await uploadKnowledgeDocument(form, state.modal?.knowledgeBaseId || "");
@@ -4275,6 +4458,8 @@ app.addEventListener("click", async (event) => {
     switchView("knowledge");
   } else if (action === "new-knowledge-base") {
     openKnowledgeEditor();
+  } else if (action === "edit-knowledge-retrieval") {
+    openKnowledgeRetrieval(knowledgeId);
   } else if (action === "manage-knowledge-documents") {
     await openKnowledgeDocuments(knowledgeId);
   } else if (action === "test-knowledge-search") {

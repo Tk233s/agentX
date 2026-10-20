@@ -49,6 +49,9 @@ public class MessagePO {
     /** Token来源 */
     private String usageSource;
 
+    /** 知识库引用 JSON */
+    private String citationsJson;
+
     /** 创建时间 */
     private LocalDateTime createdAt;
 }

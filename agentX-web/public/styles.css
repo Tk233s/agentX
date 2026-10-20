@@ -2513,6 +2513,19 @@ textarea:disabled {
   background: var(--surface);
 }
 
+.search-hit.is-eligible {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--line));
+  background: color-mix(in srgb, var(--accent-soft) 45%, var(--surface));
+}
+
+.search-hit.is-below-threshold {
+  border-style: dashed;
+}
+
+.search-hit.is-below-threshold .search-score {
+  color: var(--ink-faint);
+}
+
 .search-hit-header {
   display: flex;
   align-items: baseline;
@@ -2531,6 +2544,7 @@ textarea:disabled {
   color: var(--accent-strong);
   font-size: 11px;
   font-weight: 700;
+  text-align: right;
 }
 
 .search-hit p {
