@@ -3,6 +3,7 @@ package org.example.trigger.http;
 import org.example.domain.rag.model.entity.KnowledgeBaseEntity;
 import org.example.domain.rag.model.entity.KnowledgeDocumentEntity;
 import org.example.domain.rag.model.valobj.ChunkMatch;
+import org.example.domain.rag.model.valobj.DocumentIngestResult;
 import org.example.trigger.dto.rag.KnowledgeBaseReq;
 import org.example.trigger.dto.rag.KnowledgeBaseRes;
 import org.example.trigger.dto.rag.KnowledgeDocumentRes;
@@ -49,6 +50,10 @@ public class RagAssembler {
 
     /** 文档领域实体 -> 出参 DTO */
     public static KnowledgeDocumentRes toRes(KnowledgeDocumentEntity entity) {
+        return toRes(entity, false);
+    }
+
+    public static KnowledgeDocumentRes toRes(KnowledgeDocumentEntity entity, boolean duplicate) {
         KnowledgeDocumentRes res = new KnowledgeDocumentRes();
         res.setId(entity.getId());
         res.setKnowledgeBaseId(entity.getKnowledgeBaseId());
@@ -59,6 +64,8 @@ public class RagAssembler {
         res.setChunkCount(entity.getChunkCount());
         res.setStatus(entity.getStatus());
         res.setErrorMessage(entity.getErrorMessage());
+        res.setRetryCount(entity.getRetryCount());
+        res.setDuplicate(duplicate);
         res.setCreateTime(entity.getCreatedAt());
         res.setUpdateTime(entity.getUpdatedAt());
         return res;
@@ -67,11 +74,19 @@ public class RagAssembler {
     /** 检索命中 -> 出参 DTO */
     public static KnowledgeSearchRes toRes(ChunkMatch match) {
         KnowledgeSearchRes res = new KnowledgeSearchRes();
+        res.setKnowledgeBaseId(match.knowledgeBaseId());
         res.setChunkId(match.chunkId());
         res.setDocumentId(match.documentId());
         res.setDocumentName(match.documentName());
         res.setContent(match.content());
         res.setScore(match.score());
+        res.setVectorScore(match.vectorScore());
+        res.setKeywordScore(match.keywordScore());
+        res.setFusedScore(match.fusedScore());
+        res.setMatchedBy(match.matchedBy());
+        res.setChunkIndex(match.chunkIndex());
+        res.setPageNo(match.pageNo());
+        res.setSectionTitle(match.sectionTitle());
         return res;
     }
 }

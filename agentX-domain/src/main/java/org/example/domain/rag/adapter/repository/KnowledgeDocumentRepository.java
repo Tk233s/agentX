@@ -16,6 +16,9 @@ public interface KnowledgeDocumentRepository {
 
     KnowledgeDocumentEntity queryById(String id);
 
+    /** 在同一个知识库内按原文件指纹查找，用于上传去重。 */
+    KnowledgeDocumentEntity queryByContentHash(String knowledgeBaseId, String contentHash);
+
     List<KnowledgeDocumentEntity> queryByKnowledgeBaseId(String knowledgeBaseId);
 
     void deleteById(String id);

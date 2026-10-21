@@ -37,6 +37,15 @@ public class KnowledgeChunkEntity {
     /** 分片字符数 */
     private Integer charCount;
 
+    /** 原始文件页码；纯文本格式为空 */
+    private Integer pageNo;
+
+    /** Markdown 等结构化文本中的章节标题 */
+    private String sectionTitle;
+
+    /** 分片正文 SHA-256，用于跨通道去重 */
+    private String contentHash;
+
     private LocalDateTime createdAt;
 
     public static KnowledgeChunkEntity create(
@@ -46,6 +55,28 @@ public class KnowledgeChunkEntity {
             int chunkIndex,
             String content,
             String embedding) {
+        return create(
+                knowledgeBaseId,
+                documentId,
+                userId,
+                chunkIndex,
+                content,
+                embedding,
+                null,
+                null,
+                null);
+    }
+
+    public static KnowledgeChunkEntity create(
+            String knowledgeBaseId,
+            String documentId,
+            String userId,
+            int chunkIndex,
+            String content,
+            String embedding,
+            Integer pageNo,
+            String sectionTitle,
+            String contentHash) {
         KnowledgeChunkEntity entity = new KnowledgeChunkEntity();
         entity.setId(UUID.randomUUID().toString().replace("-", ""));
         entity.setKnowledgeBaseId(knowledgeBaseId);
@@ -55,6 +86,9 @@ public class KnowledgeChunkEntity {
         entity.setContent(content);
         entity.setEmbedding(embedding);
         entity.setCharCount(content == null ? 0 : content.length());
+        entity.setPageNo(pageNo);
+        entity.setSectionTitle(sectionTitle);
+        entity.setContentHash(contentHash);
         entity.setCreatedAt(LocalDateTime.now());
         return entity;
     }

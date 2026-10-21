@@ -25,7 +25,7 @@ public class PgKnowledgeChunkRepositoryImpl implements KnowledgeChunkRepository 
 
     private static final String COLUMNS =
             "id, knowledge_base_id, document_id, user_id, chunk_index, content, embedding::text AS embedding,"
-                    + " char_count, created_at";
+                    + " char_count, page_no, section_title, content_hash, created_at";
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -41,7 +41,8 @@ public class PgKnowledgeChunkRepositoryImpl implements KnowledgeChunkRepository 
         jdbcTemplate.batchUpdate(
                 "INSERT INTO knowledge_chunk"
                         + " (id, knowledge_base_id, document_id, user_id, chunk_index, content, embedding,"
-                        + " char_count, created_at) VALUES (?,?,?,?,?,?, CAST(? AS vector), ?, ?)",
+                        + " char_count, page_no, section_title, content_hash, created_at)"
+                        + " VALUES (?,?,?,?,?,?, CAST(? AS vector), ?, ?, ?, ?, ?)",
                 new BatchPreparedStatementSetter() {
                     @Override
                     public void setValues(PreparedStatement ps, int i) throws SQLException {
@@ -54,7 +55,14 @@ public class PgKnowledgeChunkRepositoryImpl implements KnowledgeChunkRepository 
                         ps.setString(6, chunk.getContent());
                         ps.setString(7, chunk.getEmbedding());
                         ps.setInt(8, chunk.getCharCount() == null ? 0 : chunk.getCharCount());
-                        ps.setTimestamp(9, toTimestamp(chunk.getCreatedAt()));
+                        if (chunk.getPageNo() == null) {
+                            ps.setNull(9, java.sql.Types.INTEGER);
+                        } else {
+                            ps.setInt(9, chunk.getPageNo());
+                        }
+                        ps.setString(10, chunk.getSectionTitle());
+                        ps.setString(11, chunk.getContentHash());
+                        ps.setTimestamp(12, toTimestamp(chunk.getCreatedAt()));
                     }
 
                     @Override
@@ -107,6 +115,9 @@ public class PgKnowledgeChunkRepositoryImpl implements KnowledgeChunkRepository 
         entity.setContent(rs.getString("content"));
         entity.setEmbedding(rs.getString("embedding"));
         entity.setCharCount(rs.getInt("char_count"));
+        entity.setPageNo((Integer) rs.getObject("page_no"));
+        entity.setSectionTitle(rs.getString("section_title"));
+        entity.setContentHash(rs.getString("content_hash"));
         entity.setCreatedAt(toLocalDateTime(rs.getTimestamp("created_at")));
         return entity;
     };

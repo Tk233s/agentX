@@ -1,5 +1,7 @@
 package org.example.domain.rag.service;
 
+import org.example.domain.rag.model.valobj.TextChunk;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -22,6 +24,17 @@ public final class TextChunker {
     }
 
     public static List<String> chunk(String text, int chunkSize, int overlap) {
+        return chunkWithMetadata(text, chunkSize, overlap).stream()
+                .map(TextChunk::content)
+                .toList();
+    }
+
+    /**
+     * 分片时同时记录序号和 Markdown 章节标题。
+     *
+     * 纯文本格式没有可靠页码，不伪造 pageNo；标题取该分片起点之前最近的一级标题。
+     */
+    public static List<TextChunk> chunkWithMetadata(String text, int chunkSize, int overlap) {
         String normalized = normalize(text);
         if (normalized.isEmpty() || chunkSize <= 0) {
             return List.of();
@@ -31,7 +44,8 @@ public final class TextChunker {
         // 一篇几百字的文档会被切出成百上千个分片，向量化成本成倍放大。
         int safeOverlap = Math.min(Math.max(overlap, 0), chunkSize / 2);
 
-        List<String> chunks = new ArrayList<>();
+        List<Heading> headings = headingsOf(normalized);
+        List<TextChunk> chunks = new ArrayList<>();
         int start = 0;
         int length = normalized.length();
         while (start < length) {
@@ -41,7 +55,11 @@ public final class TextChunker {
             }
             String piece = normalized.substring(start, end).trim();
             if (!piece.isEmpty()) {
-                chunks.add(piece);
+                chunks.add(new TextChunk(
+                        chunks.size(),
+                        piece,
+                        null,
+                        sectionTitleAt(headings, start)));
             }
             if (end >= length) {
                 break;
@@ -50,6 +68,37 @@ public final class TextChunker {
             start = Math.max(end - safeOverlap, start + 1);
         }
         return chunks;
+    }
+
+    private static List<Heading> headingsOf(String text) {
+        List<Heading> headings = new ArrayList<>();
+        int offset = 0;
+        for (String line : text.split("\\n", -1)) {
+            String trimmed = line.trim();
+            int hashes = 0;
+            while (hashes < trimmed.length() && hashes < 6 && trimmed.charAt(hashes) == '#') {
+                hashes++;
+            }
+            if (hashes > 0 && hashes < trimmed.length() && Character.isWhitespace(trimmed.charAt(hashes))) {
+                String title = trimmed.substring(hashes).trim();
+                if (!title.isEmpty()) {
+                    headings.add(new Heading(offset, title));
+                }
+            }
+            offset += line.length() + 1;
+        }
+        return headings;
+    }
+
+    private static String sectionTitleAt(List<Heading> headings, int position) {
+        String title = null;
+        for (Heading heading : headings) {
+            if (heading.offset() > position) {
+                break;
+            }
+            title = heading.title();
+        }
+        return title;
     }
 
     /**
@@ -93,5 +142,8 @@ public final class TextChunker {
             builder.append(current);
         }
         return builder.toString().trim();
+    }
+
+    private record Heading(int offset, String title) {
     }
 }

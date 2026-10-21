@@ -18,7 +18,8 @@ import java.util.List;
 public class PgKnowledgeDocumentRepositoryImpl implements KnowledgeDocumentRepository {
 
     private static final String COLUMNS = "id, knowledge_base_id, user_id, file_name, file_path, file_size, "
-            + "file_type, char_count, chunk_count, status, error_message, created_at, updated_at";
+            + "file_type, char_count, chunk_count, status, error_message, content_hash, retry_count,"
+            + " created_at, updated_at";
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -29,7 +30,8 @@ public class PgKnowledgeDocumentRepositoryImpl implements KnowledgeDocumentRepos
     @Override
     public void save(KnowledgeDocumentEntity document) {
         jdbcTemplate.update(
-                "INSERT INTO knowledge_document (" + COLUMNS + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO knowledge_document (" + COLUMNS + ")"
+                        + " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 document.getId(),
                 document.getKnowledgeBaseId(),
                 document.getUserId(),
@@ -41,6 +43,8 @@ public class PgKnowledgeDocumentRepositoryImpl implements KnowledgeDocumentRepos
                 document.getChunkCount(),
                 document.getStatus(),
                 document.getErrorMessage(),
+                document.getContentHash(),
+                document.getRetryCount(),
                 toTimestamp(document.getCreatedAt()),
                 toTimestamp(document.getUpdatedAt()));
     }
@@ -49,11 +53,12 @@ public class PgKnowledgeDocumentRepositoryImpl implements KnowledgeDocumentRepos
     public void updateProcessResult(KnowledgeDocumentEntity document) {
         jdbcTemplate.update(
                 "UPDATE knowledge_document SET char_count = ?, chunk_count = ?, status = ?,"
-                        + " error_message = ?, updated_at = ? WHERE id = ?",
+                        + " error_message = ?, retry_count = ?, updated_at = ? WHERE id = ?",
                 document.getCharCount(),
                 document.getChunkCount(),
                 document.getStatus(),
                 document.getErrorMessage(),
+                document.getRetryCount(),
                 toTimestamp(document.getUpdatedAt()),
                 document.getId());
     }
@@ -62,6 +67,21 @@ public class PgKnowledgeDocumentRepositoryImpl implements KnowledgeDocumentRepos
     public KnowledgeDocumentEntity queryById(String id) {
         List<KnowledgeDocumentEntity> records =
                 jdbcTemplate.query("SELECT " + COLUMNS + " FROM knowledge_document WHERE id = ?", ROW_MAPPER, id);
+        return records.isEmpty() ? null : records.get(0);
+    }
+
+    @Override
+    public KnowledgeDocumentEntity queryByContentHash(String knowledgeBaseId, String contentHash) {
+        if (contentHash == null || contentHash.isBlank()) {
+            return null;
+        }
+        List<KnowledgeDocumentEntity> records = jdbcTemplate.query(
+                "SELECT " + COLUMNS + " FROM knowledge_document"
+                        + " WHERE knowledge_base_id = ? AND content_hash = ?"
+                        + " ORDER BY created_at DESC LIMIT 1",
+                ROW_MAPPER,
+                knowledgeBaseId,
+                contentHash);
         return records.isEmpty() ? null : records.get(0);
     }
 
@@ -104,6 +124,8 @@ public class PgKnowledgeDocumentRepositoryImpl implements KnowledgeDocumentRepos
         entity.setChunkCount(rs.getInt("chunk_count"));
         entity.setStatus(rs.getString("status"));
         entity.setErrorMessage(rs.getString("error_message"));
+        entity.setContentHash(rs.getString("content_hash"));
+        entity.setRetryCount(rs.getInt("retry_count"));
         entity.setCreatedAt(toLocalDateTime(rs.getTimestamp("created_at")));
         entity.setUpdatedAt(toLocalDateTime(rs.getTimestamp("updated_at")));
         return entity;

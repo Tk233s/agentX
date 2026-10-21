@@ -1,5 +1,6 @@
 package org.example.message;
 
+import com.google.gson.Gson;
 import org.example.domain.conversation.model.valobj.KnowledgeCitation;
 import org.example.domain.message.model.entity.MessageEntity;
 import org.example.infrastructure.adapter.repository.MessageRepositoryImpl;
@@ -38,10 +39,13 @@ public class MessageCitationPersistenceTest {
         org.mockito.ArgumentCaptor<MessagePO> captor =
                 org.mockito.ArgumentCaptor.forClass(MessagePO.class);
         verify(messageDao).insert(captor.capture());
-        assertEquals(
-                "[{\"knowledgeBaseId\":\"kb-1\",\"documentName\":\"售后政策.txt\","
-                        + "\"snippet\":\"满足条件可以换新\",\"score\":0.87}]",
-                captor.getValue().getCitationsJson());
+        KnowledgeCitation[] saved = new Gson().fromJson(
+                captor.getValue().getCitationsJson(),
+                KnowledgeCitation[].class);
+        assertEquals(1, saved.length);
+        assertEquals("kb-1", saved[0].knowledgeBaseId());
+        assertEquals("售后政策.txt", saved[0].documentName());
+        assertEquals(0.87D, saved[0].score(), 0.000001);
     }
 
     @Test
@@ -66,5 +70,6 @@ public class MessageCitationPersistenceTest {
         assertEquals(1, messages.get(0).getCitations().size());
         assertEquals("售后政策.txt", messages.get(0).getCitations().get(0).documentName());
         assertEquals(0.87D, messages.get(0).getCitations().get(0).score(), 0.000001);
+        assertEquals(null, messages.get(0).getCitations().get(0).matchedBy());
     }
 }

@@ -26,10 +26,15 @@ public class PgVectorStoreAdapter implements VectorStorePort {
                    c.document_id,
                    d.file_name,
                    c.content,
+                   c.chunk_index,
+                   c.page_no,
+                   c.section_title,
                    1 - (c.embedding <=> CAST(? AS vector)) AS score
             FROM knowledge_chunk c
             JOIN knowledge_document d ON d.id = c.document_id
-            WHERE c.knowledge_base_id = ? AND c.user_id = ?
+            WHERE c.knowledge_base_id = ?
+              AND c.user_id = ?
+              AND d.status = 'READY'
             ORDER BY c.embedding <=> CAST(? AS vector)
             LIMIT ?
             """;
@@ -56,7 +61,13 @@ public class PgVectorStoreAdapter implements VectorStorePort {
                         rs.getString("document_id"),
                         rs.getString("file_name"),
                         rs.getString("content"),
-                        rs.getDouble("score")),
+                        rs.getInt("chunk_index"),
+                        (Integer) rs.getObject("page_no"),
+                        rs.getString("section_title"),
+                        rs.getDouble("score"),
+                        0D,
+                        rs.getDouble("score"),
+                        "VECTOR"),
                 literal, knowledgeBaseId, userId, literal, limit);
     }
 }

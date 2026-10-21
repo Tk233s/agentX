@@ -10,6 +10,8 @@ import lombok.Data;
 @Data
 public class KnowledgeSearchRes {
 
+    private String knowledgeBaseId;
+
     private String chunkId;
 
     private String documentId;
@@ -19,5 +21,21 @@ public class KnowledgeSearchRes {
 
     private String content;
 
+    /** 兼容字段，值等于 fusedScore */
     private Double score;
+
+    private Double vectorScore;
+
+    private Double keywordScore;
+
+    private Double fusedScore;
+
+    /** VECTOR / KEYWORD / HYBRID */
+    private String matchedBy;
+
+    private Integer chunkIndex;
+
+    private Integer pageNo;
+
+    private String sectionTitle;
 }

@@ -36,6 +36,12 @@ public class KnowledgeDocumentRes {
     /** 失败原因，成功时为 null */
     private String errorMessage;
 
+    /** 后台处理尝试次数 */
+    private Integer retryCount;
+
+    /** 本次上传是否命中了同知识库内的相同内容 */
+    private Boolean duplicate;
+
     private LocalDateTime createTime;
 
     private LocalDateTime updateTime;

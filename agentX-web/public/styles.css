@@ -983,6 +983,12 @@ textarea:disabled {
   font-size: 11px;
 }
 
+.message-citation-location {
+  margin-top: 2px;
+  color: var(--ink-faint);
+  font-size: 11px;
+}
+
 .message-citations p {
   margin: 3px 0 0;
   line-height: 1.55;
@@ -2532,6 +2538,15 @@ textarea:disabled {
   justify-content: space-between;
   gap: 10px;
   margin-bottom: 8px;
+}
+
+.search-hit-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-bottom: 8px;
+  color: var(--ink-faint);
+  font-size: 11px;
 }
 
 .search-hit-header strong {

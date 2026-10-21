@@ -5,6 +5,7 @@ import org.example.domain.rag.adapter.repository.KnowledgeChunkRepository;
 import org.example.domain.rag.model.entity.KnowledgeBaseEntity;
 import org.example.domain.rag.model.entity.KnowledgeDocumentEntity;
 import org.example.domain.rag.model.valobj.ChunkMatch;
+import org.example.domain.rag.model.valobj.DocumentIngestResult;
 import org.example.domain.rag.service.IRagDomainService;
 import org.example.trigger.dto.rag.KnowledgeBaseReq;
 import org.example.trigger.dto.rag.KnowledgeBaseRes;
@@ -106,11 +107,7 @@ public class RagController {
     }
 
     /**
-     * 上传文档并同步完成解析、分片、向量化、入库。
-     *
-     * 这里同步处理：文件不大时用户点完上传就能看到 READY。
-     * 处理失败时领域服务会把文档标记成 FAILED 并把原因落库，再抛出业务异常，
-     * 因此前端既能立刻收到错误提示，也能在文档列表里看到这条失败记录和原因。
+     * 上传文档并立即返回 PENDING 记录，解析、分片和向量化由后台线程继续处理。
      */
     @PostMapping("/document/upload")
     public Response<KnowledgeDocumentRes> upload(
@@ -126,12 +123,30 @@ public class RagController {
         } catch (IOException e) {
             throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "读取上传文件失败：" + e.getMessage());
         }
-        KnowledgeDocumentEntity document = ragDomainService.ingestDocument(
+        DocumentIngestResult result = ragDomainService.ingestDocument(
                 knowledgeBaseId,
                 userId,
                 file.getOriginalFilename(),
                 content);
-        return Response.success(RagAssembler.toRes(document));
+        return Response.success(RagAssembler.toRes(result.document(), result.duplicate()));
+    }
+
+    /**
+     * 查询单份文档状态，供前端上传后轮询。
+     */
+    @GetMapping("/document/get")
+    public Response<KnowledgeDocumentRes> getDocument(@RequestParam("id") String id) {
+        return Response.success(RagAssembler.toRes(
+                ragDomainService.getDocument(id, UserContext.requireCurrentUserId())));
+    }
+
+    /**
+     * 重试处理失败或中断的文档。
+     */
+    @PostMapping("/document/retry")
+    public Response<KnowledgeDocumentRes> retryDocument(@RequestParam("id") String id) {
+        return Response.success(RagAssembler.toRes(
+                ragDomainService.retryDocument(id, UserContext.requireCurrentUserId())));
     }
 
     /**

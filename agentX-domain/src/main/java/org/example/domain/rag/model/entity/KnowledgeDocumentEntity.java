@@ -56,6 +56,12 @@ public class KnowledgeDocumentEntity {
     /** 失败原因 */
     private String errorMessage;
 
+    /** 原文件 SHA-256，用于同一知识库内的内容去重 */
+    private String contentHash;
+
+    /** 已尝试处理的次数 */
+    private Integer retryCount;
+
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -66,6 +72,24 @@ public class KnowledgeDocumentEntity {
             String filePath,
             Long fileSize,
             String fileType) {
+        return createPending(
+                knowledgeBaseId,
+                userId,
+                fileName,
+                filePath,
+                fileSize,
+                fileType,
+                null);
+    }
+
+    public static KnowledgeDocumentEntity createPending(
+            String knowledgeBaseId,
+            String userId,
+            String fileName,
+            String filePath,
+            Long fileSize,
+            String fileType,
+            String contentHash) {
         KnowledgeDocumentEntity entity = new KnowledgeDocumentEntity();
         entity.setId(UUID.randomUUID().toString().replace("-", ""));
         entity.setKnowledgeBaseId(knowledgeBaseId);
@@ -77,6 +101,8 @@ public class KnowledgeDocumentEntity {
         entity.setCharCount(0);
         entity.setChunkCount(0);
         entity.setStatus(STATUS_PENDING);
+        entity.setContentHash(contentHash);
+        entity.setRetryCount(0);
         entity.setCreatedAt(LocalDateTime.now());
         entity.setUpdatedAt(LocalDateTime.now());
         return entity;
@@ -85,6 +111,18 @@ public class KnowledgeDocumentEntity {
     public void markProcessing() {
         this.status = STATUS_PROCESSING;
         this.errorMessage = null;
+        this.retryCount = (retryCount == null ? 0 : retryCount) + 1;
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    public void prepareRetry() {
+        if (!STATUS_FAILED.equals(status)) {
+            throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "只有失败的文档可以重试");
+        }
+        this.status = STATUS_PENDING;
+        this.errorMessage = null;
+        this.charCount = 0;
+        this.chunkCount = 0;
         this.updatedAt = LocalDateTime.now();
     }
 

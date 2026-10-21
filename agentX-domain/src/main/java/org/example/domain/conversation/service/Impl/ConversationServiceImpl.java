@@ -22,6 +22,7 @@ import org.example.domain.message.model.entity.MessageEntity;
 import org.example.domain.message.service.IMessageDomainService;
 import org.example.domain.rag.model.valobj.ChunkMatch;
 import org.example.domain.rag.service.IRagDomainService;
+import org.example.domain.rag.service.RrfFusion;
 import org.example.domain.session.model.entity.SessionEntity;
 import org.example.domain.session.model.valobj.SessionMemory;
 import org.example.domain.session.model.valobj.SessionTokenBudget;
@@ -807,10 +808,7 @@ public class ConversationServiceImpl implements IConversationService {
         if (matches.isEmpty()) {
             return List.of();
         }
-        matches.sort((left, right) -> Double.compare(right.score(), left.score()));
-        return matches.size() > MAX_TOTAL_KNOWLEDGE_CHUNKS
-                ? new ArrayList<>(matches.subList(0, MAX_TOTAL_KNOWLEDGE_CHUNKS))
-                : matches;
+        return RrfFusion.distinctAndLimit(matches, MAX_TOTAL_KNOWLEDGE_CHUNKS);
     }
 
     /**
@@ -841,7 +839,15 @@ public class ConversationServiceImpl implements IConversationService {
                     match.knowledgeBaseId(),
                     match.documentName(),
                     snippet,
-                    match.score()));
+                    match.fusedScore(),
+                    match.chunkId(),
+                    match.chunkIndex(),
+                    match.pageNo(),
+                    match.sectionTitle(),
+                    match.vectorScore(),
+                    match.keywordScore(),
+                    match.fusedScore(),
+                    match.matchedBy()));
         }
         return citations;
     }
@@ -860,6 +866,9 @@ public class ConversationServiceImpl implements IConversationService {
         builder.append("<knowledge>\n");
         for (ChunkMatch match : matches) {
             builder.append("【出处：").append(match.documentName()).append("】\n");
+            if (match.sectionTitle() != null && !match.sectionTitle().isBlank()) {
+                builder.append("【章节：").append(match.sectionTitle()).append("】\n");
+            }
             builder.append(match.content()).append('\n');
         }
         builder.append("</knowledge>");

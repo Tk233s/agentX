@@ -9,5 +9,36 @@ public record KnowledgeCitation(
         String knowledgeBaseId,
         String documentName,
         String snippet,
-        double score) {
+        double score,
+        String chunkId,
+        Integer chunkIndex,
+        Integer pageNo,
+        String sectionTitle,
+        Double vectorScore,
+        Double keywordScore,
+        Double fusedScore,
+        String matchedBy) {
+
+    /**
+     * 兼容旧测试与旧调用方。score 同时作为兼容字段写入 fusedScore。
+     */
+    public KnowledgeCitation(
+            String knowledgeBaseId,
+            String documentName,
+            String snippet,
+            double score) {
+        this(
+                knowledgeBaseId,
+                documentName,
+                snippet,
+                score,
+                null,
+                null,
+                null,
+                null,
+                score,
+                null,
+                score,
+                "VECTOR");
+    }
 }

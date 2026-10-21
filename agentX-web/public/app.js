@@ -40,6 +40,7 @@ const state = {
   knowledgeBases: [],
   knowledgeDocuments: [],
   knowledgeDocumentsFor: "",
+  knowledgeDocumentsPollTimer: null,
   sessions: [],
   messages: [],
   activeAgentId: sessionStorage.getItem(AGENT_KEY) || "",
@@ -219,6 +220,7 @@ function estimateTokenCount(text) {
 }
 
 function clearAuth() {
+  stopKnowledgeDocumentPolling();
   resetStreamingState();
   localStorage.removeItem(AUTH_KEY);
   sessionStorage.removeItem(AGENT_KEY);
@@ -928,14 +930,41 @@ function renderMessageCitations(message) {
 
   const items = citations
     .map((citation) => {
-      const score = Number(citation.score);
-      const scoreLabel = Number.isFinite(score) ? `相似度 ${score.toFixed(3)}` : "";
+      const fusedScore = Number(citation.fusedScore ?? citation.score);
+      const vectorScore = citation.vectorScore == null ? null : Number(citation.vectorScore);
+      const keywordScore = citation.keywordScore == null ? null : Number(citation.keywordScore);
+      const scoreParts = [];
+      if (Number.isFinite(fusedScore)) {
+        scoreParts.push(`综合 ${fusedScore.toFixed(4)}`);
+      }
+      if (vectorScore != null && Number.isFinite(vectorScore)) {
+        scoreParts.push(`向量 ${vectorScore.toFixed(3)}`);
+      }
+      if (keywordScore != null && Number.isFinite(keywordScore) && keywordScore > 0) {
+        scoreParts.push(`关键词 ${keywordScore.toFixed(3)}`);
+      }
+      const scoreLabel = scoreParts.join(" · ");
+      const locationParts = [];
+      if (citation.sectionTitle) {
+        locationParts.push(citation.sectionTitle);
+      }
+      if (citation.pageNo != null) {
+        locationParts.push(`第 ${citation.pageNo} 页`);
+      } else if (citation.chunkIndex != null) {
+        locationParts.push(`第 ${Number(citation.chunkIndex) + 1} 段`);
+      }
+      const matchedByLabel = {
+        VECTOR: "向量命中",
+        KEYWORD: "关键词命中",
+        HYBRID: "混合命中",
+      }[citation.matchedBy] || "";
       return `
         <li>
           <div class="message-citation-head">
             <strong>${escapeHtml(citation.documentName || "未命名文档")}</strong>
-            ${scoreLabel ? `<span>${escapeHtml(scoreLabel)}</span>` : ""}
+            <span>${escapeHtml([matchedByLabel, scoreLabel].filter(Boolean).join(" · "))}</span>
           </div>
+          ${locationParts.length ? `<div class="message-citation-location">${escapeHtml(locationParts.join(" · "))}</div>` : ""}
           <p>${escapeHtml(citation.snippet || "")}</p>
         </li>
       `;
@@ -1383,6 +1412,13 @@ function documentStatusLabel(status) {
     FAILED: "失败",
   };
   return labels[status] || status || "未知";
+}
+
+function stopKnowledgeDocumentPolling() {
+  if (state.knowledgeDocumentsPollTimer) {
+    clearTimeout(state.knowledgeDocumentsPollTimer);
+    state.knowledgeDocumentsPollTimer = null;
+  }
 }
 
 function renderKnowledgeQuickList() {
@@ -2436,7 +2472,7 @@ function renderKnowledgeDocumentsModal() {
         <div class="modal-header">
           <div>
             <h2 class="modal-title" id="knowledge-documents-title">${escapeHtml(knowledgeBase?.name || "知识库")} · 文档</h2>
-            <p class="modal-subtitle">支持 txt / md，上传后会立即解析、分片并向量化入库</p>
+            <p class="modal-subtitle">支持 txt / md；上传后进入后台解析与向量化，页面会自动刷新状态</p>
           </div>
           <button class="icon-button" type="button" data-action="close-modal" aria-label="关闭">
             ${svgIcon("x", 18)}
@@ -2450,7 +2486,7 @@ function renderKnowledgeDocumentsModal() {
             </label>
             <button class="primary-button" type="submit" ${state.knowledgeBusy ? "disabled" : ""}>
               ${state.knowledgeBusy ? '<span class="button-spinner"></span>' : svgIcon("save", 15)}
-              <span>上传并入库</span>
+              <span>上传并处理</span>
             </button>
           </form>
           <div class="document-list">
@@ -2467,7 +2503,8 @@ function renderKnowledgeDocumentsModal() {
                               <span class="document-row-meta">
                                 ${formatFileSize(document.fileSize)} ·
                                 ${document.charCount || 0} 字 ·
-                                ${document.chunkCount || 0} 个分片
+                                ${document.chunkCount || 0} 个分片 ·
+                                尝试 ${document.retryCount || 0} 次
                               </span>
                               ${
                                 document.status === "FAILED"
@@ -2478,6 +2515,21 @@ function renderKnowledgeDocumentsModal() {
                             <span class="document-status status-${escapeHtml(String(document.status || "").toLowerCase())}">
                               ${escapeHtml(documentStatusLabel(document.status))}
                             </span>
+                            ${
+                              document.status === "FAILED"
+                                ? `
+                                  <button
+                                    class="icon-button"
+                                    type="button"
+                                    data-action="retry-knowledge-document"
+                                    data-document-id="${escapeHtml(document.id)}"
+                                    data-knowledge-id="${escapeHtml(state.modal.knowledgeBaseId)}"
+                                    title="重试处理"
+                                    aria-label="重试处理"
+                                  >${svgIcon("refresh", 15)}</button>
+                                `
+                                : ""
+                            }
                             <button
                               class="icon-button danger"
                               type="button"
@@ -2486,6 +2538,7 @@ function renderKnowledgeDocumentsModal() {
                               data-knowledge-id="${escapeHtml(state.modal.knowledgeBaseId)}"
                               title="删除文档"
                               aria-label="删除文档"
+                              ${["PENDING", "PROCESSING"].includes(document.status) ? "disabled" : ""}
                             >${svgIcon("trash", 15)}</button>
                           </article>
                         `,
@@ -2525,7 +2578,7 @@ function renderKnowledgeSearchModal() {
         <div class="modal-header">
           <div>
             <h2 class="modal-title" id="knowledge-search-title">${escapeHtml(knowledgeBase?.name || "知识库")} · 检索测试</h2>
-            <p class="modal-subtitle">进入对话的最低相似度为 ${minScore.toFixed(2)}，检索测试会保留所有候选用于对比</p>
+            <p class="modal-subtitle">向量阈值 ${minScore.toFixed(2)}；最终结果由向量排名与关键词排名通过 RRF 融合</p>
           </div>
           <button class="icon-button" type="button" data-action="close-modal" aria-label="关闭">
             ${svgIcon("x", 18)}
@@ -2562,15 +2615,31 @@ function renderKnowledgeSearchModal() {
                 ? results
                     .map(
                       (match) => {
-                        const score = Number(match.score || 0);
-                        const eligible = score >= minScore;
+                        const fusedScore = Number(match.fusedScore ?? match.score ?? 0);
+                        const vectorScore = Number(match.vectorScore || 0);
+                        const keywordScore = Number(match.keywordScore || 0);
+                        const matchedByLabel = {
+                          VECTOR: "向量命中",
+                          KEYWORD: "关键词命中",
+                          HYBRID: "混合命中",
+                        }[match.matchedBy] || "候选";
+                        const location = match.sectionTitle
+                          ? ` · ${escapeHtml(match.sectionTitle)}`
+                          : match.pageNo != null
+                            ? ` · 第 ${match.pageNo} 页`
+                            : "";
                         return `
-                        <article class="search-hit ${eligible ? "is-eligible" : "is-below-threshold"}">
+                        <article class="search-hit is-eligible">
                           <div class="search-hit-header">
                             <strong>${escapeHtml(match.documentName || "未知文档")}</strong>
                             <span class="search-score">
-                              相似度 ${score.toFixed(4)} · ${eligible ? "可进入回答" : "低于阈值"}
+                              ${escapeHtml(matchedByLabel)} · 综合 ${fusedScore.toFixed(4)}
                             </span>
+                          </div>
+                          <div class="search-hit-meta">
+                            <span>向量 ${vectorScore.toFixed(3)}</span>
+                            <span>关键词 ${keywordScore.toFixed(3)}</span>
+                            <span>第 ${Number(match.chunkIndex || 0) + 1} 段${location}</span>
                           </div>
                           <p>${escapeHtml(match.content)}</p>
                         </article>
@@ -3929,6 +3998,7 @@ function openDeleteKnowledgeDocumentModal(documentId, knowledgeBaseId) {
 }
 
 function openKnowledgeSearch(knowledgeBaseId) {
+  stopKnowledgeDocumentPolling();
   const knowledgeBase = knowledgeBaseById(knowledgeBaseId);
   state.modal = {
     type: "knowledge-search",
@@ -3956,7 +4026,44 @@ async function refreshKnowledgeDocuments(knowledgeBaseId) {
   state.knowledgeDocumentsFor = knowledgeBaseId;
 }
 
+function scheduleKnowledgeDocumentPolling(knowledgeBaseId) {
+  stopKnowledgeDocumentPolling();
+  const hasPending = state.knowledgeDocuments.some((document) =>
+    document.status === "PENDING" || document.status === "PROCESSING",
+  );
+  if (!hasPending) {
+    return;
+  }
+
+  state.knowledgeDocumentsPollTimer = setTimeout(async () => {
+    state.knowledgeDocumentsPollTimer = null;
+    if (
+      state.modal?.type !== "knowledge-documents" ||
+      state.modal.knowledgeBaseId !== knowledgeBaseId
+    ) {
+      return;
+    }
+    try {
+      await refreshKnowledgeDocuments(knowledgeBaseId);
+      await refreshKnowledgeBases();
+      renderWorkspace();
+      scheduleKnowledgeDocumentPolling(knowledgeBaseId);
+    } catch (error) {
+      if (error.code === "401") {
+        clearAuth();
+        renderLogin(error.message);
+        return;
+      }
+      state.knowledgeDocumentsPollTimer = setTimeout(
+        () => scheduleKnowledgeDocumentPolling(knowledgeBaseId),
+        3000,
+      );
+    }
+  }, 1500);
+}
+
 async function openKnowledgeDocuments(knowledgeBaseId) {
+  stopKnowledgeDocumentPolling();
   state.modal = { type: "knowledge-documents", knowledgeBaseId };
   state.knowledgeDocuments = [];
   state.knowledgeDocumentsFor = "";
@@ -3965,6 +4072,7 @@ async function openKnowledgeDocuments(knowledgeBaseId) {
 
   try {
     await refreshKnowledgeDocuments(knowledgeBaseId);
+    scheduleKnowledgeDocumentPolling(knowledgeBaseId);
   } catch (error) {
     if (error.code === "401") {
       clearAuth();
@@ -4102,7 +4210,11 @@ async function uploadKnowledgeDocument(form, knowledgeBaseId) {
       `/rag/knowledge-base/document/upload?knowledgeBaseId=${encodeURIComponent(knowledgeBaseId)}`,
       upload,
     );
-    showToast("success", "文档已入库", `${document.fileName} · ${document.chunkCount} 个分片`);
+    if (document.duplicate) {
+      showToast("info", "文件已存在", `${document.fileName} 已在当前知识库中`);
+    } else {
+      showToast("success", "已提交处理", `${document.fileName} 正在后台解析和向量化`);
+    }
   } catch (error) {
     if (error.code === "401") {
       clearAuth();
@@ -4113,11 +4225,40 @@ async function uploadKnowledgeDocument(form, knowledgeBaseId) {
   } finally {
     state.knowledgeBusy = false;
     try {
-      // 失败时文档会以 FAILED 状态留在列表里，所以两种结果都要重新拉一次
       await refreshKnowledgeDocuments(knowledgeBaseId);
       await refreshKnowledgeBases();
+      scheduleKnowledgeDocumentPolling(knowledgeBaseId);
     } catch {
       // 列表刷新失败不覆盖上面的提示
+    }
+    renderWorkspace();
+  }
+}
+
+async function retryKnowledgeDocument(documentId, knowledgeBaseId) {
+  state.knowledgeBusy = true;
+  renderWorkspace();
+  try {
+    const document = await apiRequest(
+      `/rag/knowledge-base/document/retry?id=${encodeURIComponent(documentId)}`,
+      { method: "POST" },
+    );
+    showToast("info", "已重新提交", `${document.fileName} 正在后台处理`);
+  } catch (error) {
+    if (error.code === "401") {
+      clearAuth();
+      renderLogin(error.message);
+      return;
+    }
+    showToast("error", "重试失败", error.message);
+  } finally {
+    state.knowledgeBusy = false;
+    try {
+      await refreshKnowledgeDocuments(knowledgeBaseId);
+      await refreshKnowledgeBases();
+      scheduleKnowledgeDocumentPolling(knowledgeBaseId);
+    } catch {
+      // 保留当前列表，轮询或下一次刷新会继续同步。
     }
     renderWorkspace();
   }
@@ -4317,6 +4458,7 @@ function openDeleteSessionModal(sessionId) {
 }
 
 function closeModal() {
+  stopKnowledgeDocumentPolling();
   state.modal = null;
   renderWorkspace();
 }
@@ -4470,6 +4612,8 @@ app.addEventListener("click", async (event) => {
     await deleteKnowledgeBase(knowledgeId || state.modal?.knowledgeBaseId);
   } else if (action === "delete-knowledge-document") {
     openDeleteKnowledgeDocumentModal(documentId, knowledgeId);
+  } else if (action === "retry-knowledge-document") {
+    await retryKnowledgeDocument(documentId, knowledgeId);
   } else if (action === "confirm-delete-knowledge-document") {
     await deleteKnowledgeDocument(
       documentId || state.modal?.documentId,

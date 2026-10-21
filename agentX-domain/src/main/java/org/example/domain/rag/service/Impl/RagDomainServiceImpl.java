@@ -2,9 +2,11 @@ package org.example.domain.rag.service.Impl;
 
 import org.example.domain.apikey.model.entity.ApiKeyEntity;
 import org.example.domain.apikey.service.IApiKeyDomainService;
+import org.example.domain.rag.adapter.port.DocumentTaskPort;
 import org.example.domain.rag.adapter.port.DocumentParserPort;
 import org.example.domain.rag.adapter.port.EmbeddingPort;
 import org.example.domain.rag.adapter.port.FileStoragePort;
+import org.example.domain.rag.adapter.port.KeywordSearchPort;
 import org.example.domain.rag.adapter.port.VectorStorePort;
 import org.example.domain.rag.adapter.repository.KnowledgeBaseRepository;
 import org.example.domain.rag.adapter.repository.KnowledgeChunkRepository;
@@ -14,8 +16,12 @@ import org.example.domain.rag.model.entity.KnowledgeBaseEntity;
 import org.example.domain.rag.model.entity.KnowledgeChunkEntity;
 import org.example.domain.rag.model.entity.KnowledgeDocumentEntity;
 import org.example.domain.rag.model.valobj.ChunkMatch;
+import org.example.domain.rag.model.valobj.ContentHash;
+import org.example.domain.rag.model.valobj.DocumentIngestResult;
 import org.example.domain.rag.model.valobj.EmbeddingCodec;
+import org.example.domain.rag.model.valobj.TextChunk;
 import org.example.domain.rag.service.IRagDomainService;
+import org.example.domain.rag.service.RrfFusion;
 import org.example.domain.rag.service.TextChunker;
 import org.example.types.enums.ResponseCode;
 import org.example.types.exception.AppException;
@@ -61,6 +67,12 @@ public class RagDomainServiceImpl implements IRagDomainService {
 
     @Resource
     private VectorStorePort vectorStorePort;
+
+    @Resource
+    private KeywordSearchPort keywordSearchPort;
+
+    @Resource
+    private DocumentTaskPort documentTaskPort;
 
     @Resource
     private IApiKeyDomainService apiKeyDomainService;
@@ -116,7 +128,14 @@ public class RagDomainServiceImpl implements IRagDomainService {
     @Transactional("ragTransactionManager")
     public void deleteKnowledgeBase(String id, String userId) {
         requireKnowledgeBase(id, userId);
-        for (KnowledgeDocumentEntity document : knowledgeDocumentRepository.queryByKnowledgeBaseId(id)) {
+        List<KnowledgeDocumentEntity> documents =
+                knowledgeDocumentRepository.queryByKnowledgeBaseId(id);
+        if (documents.stream().anyMatch(this::isActiveDocument)) {
+            throw new AppException(
+                    ResponseCode.ILLEGAL_PARAMETER.getCode(),
+                    "知识库中仍有文档正在处理，请等待处理完成后再删除");
+        }
+        for (KnowledgeDocumentEntity document : documents) {
             fileStoragePort.delete(document.getFilePath());
         }
         knowledgeChunkRepository.deleteByKnowledgeBaseId(id);
@@ -125,7 +144,7 @@ public class RagDomainServiceImpl implements IRagDomainService {
     }
 
     @Override
-    public KnowledgeDocumentEntity ingestDocument(
+    public DocumentIngestResult ingestDocument(
             String knowledgeBaseId,
             String userId,
             String fileName,
@@ -141,6 +160,13 @@ public class RagDomainServiceImpl implements IRagDomainService {
                     "暂不支持的文件类型：" + (fileType.isEmpty() ? "未知" : fileType));
         }
 
+        String contentHash = ContentHash.sha256(content);
+        KnowledgeDocumentEntity existing =
+                knowledgeDocumentRepository.queryByContentHash(knowledgeBaseId, contentHash);
+        if (existing != null) {
+            return new DocumentIngestResult(existing, true);
+        }
+
         String filePath = fileStoragePort.store(fileName, content);
         KnowledgeDocumentEntity document = KnowledgeDocumentEntity.createPending(
                 knowledgeBaseId,
@@ -148,46 +174,24 @@ public class RagDomainServiceImpl implements IRagDomainService {
                 fileName,
                 filePath,
                 (long) content.length,
-                fileType);
+                fileType,
+                contentHash);
         knowledgeDocumentRepository.save(document);
 
         try {
-            document.markProcessing();
-            knowledgeDocumentRepository.updateProcessResult(document);
-
-            String text = documentParserPort.parse(filePath, fileType);
-            List<String> pieces = TextChunker.chunk(
-                    text,
-                    knowledgeBase.getChunkSize(),
-                    knowledgeBase.getChunkOverlap());
-            if (pieces.isEmpty()) {
-                throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "文档里没有可入库的文本");
-            }
-
-            List<float[]> vectors = embedTexts(knowledgeBase, userId, pieces);
-            List<KnowledgeChunkEntity> chunks = new ArrayList<>(pieces.size());
-            for (int i = 0; i < pieces.size(); i++) {
-                chunks.add(KnowledgeChunkEntity.create(
-                        knowledgeBaseId,
-                        document.getId(),
-                        userId,
-                        i,
-                        pieces.get(i),
-                        EmbeddingCodec.encode(vectors.get(i))));
-            }
-            knowledgeChunkRepository.batchSave(chunks);
-
-            document.markReady(text.length(), chunks.size());
-            knowledgeDocumentRepository.updateProcessResult(document);
-            return document;
+            documentTaskPort.submit(() -> processStoredDocument(document.getId(), userId));
+            return new DocumentIngestResult(document, false);
         } catch (RuntimeException e) {
-            // 半途写进去的分片要清掉，否则重新上传会留下重复数据
-            knowledgeChunkRepository.deleteByDocumentId(document.getId());
             document.markFailed(rootMessage(e));
             knowledgeDocumentRepository.updateProcessResult(document);
-            log.warn("文档入库失败，document={}, file={}: {}", document.getId(), fileName, e.getMessage());
+            log.warn("提交文档后台任务失败，document={}, file={}: {}", document.getId(), fileName, e.getMessage());
             throw e;
         }
+    }
+
+    @Override
+    public KnowledgeDocumentEntity getDocument(String documentId, String userId) {
+        return requireDocument(documentId, userId);
     }
 
     @Override
@@ -197,10 +201,88 @@ public class RagDomainServiceImpl implements IRagDomainService {
     }
 
     @Override
-    public void deleteDocument(String documentId, String userId) {
+    public void processStoredDocument(String documentId, String userId) {
         KnowledgeDocumentEntity document = knowledgeDocumentRepository.queryById(documentId);
         if (document == null || !userId.equals(document.getUserId())) {
-            throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "文档不存在");
+            log.warn("后台处理时文档不存在或归属不符，document={}, user={}", documentId, userId);
+            return;
+        }
+        if (KnowledgeDocumentEntity.STATUS_READY.equals(document.getStatus())) {
+            return;
+        }
+
+        KnowledgeBaseEntity knowledgeBase =
+                requireKnowledgeBase(document.getKnowledgeBaseId(), userId);
+        try {
+            document.markProcessing();
+            knowledgeDocumentRepository.updateProcessResult(document);
+            knowledgeChunkRepository.deleteByDocumentId(documentId);
+
+            String text = documentParserPort.parse(document.getFilePath(), document.getFileType());
+            List<TextChunk> pieces = TextChunker.chunkWithMetadata(
+                    text,
+                    knowledgeBase.getChunkSize(),
+                    knowledgeBase.getChunkOverlap());
+            if (pieces.isEmpty()) {
+                throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "文档里没有可入库的文本");
+            }
+
+            List<float[]> vectors = embedTexts(
+                    knowledgeBase,
+                    userId,
+                    pieces.stream().map(TextChunk::content).toList());
+            List<KnowledgeChunkEntity> chunks = new ArrayList<>(pieces.size());
+            for (int i = 0; i < pieces.size(); i++) {
+                TextChunk piece = pieces.get(i);
+                chunks.add(KnowledgeChunkEntity.create(
+                        document.getKnowledgeBaseId(),
+                        documentId,
+                        userId,
+                        piece.chunkIndex(),
+                        piece.content(),
+                        EmbeddingCodec.encode(vectors.get(i)),
+                        piece.pageNo(),
+                        piece.sectionTitle(),
+                        ContentHash.sha256(piece.content())));
+            }
+            knowledgeChunkRepository.batchSave(chunks);
+
+            document.markReady(text.length(), chunks.size());
+            knowledgeDocumentRepository.updateProcessResult(document);
+        } catch (RuntimeException e) {
+            knowledgeChunkRepository.deleteByDocumentId(documentId);
+            document.markFailed(rootMessage(e));
+            knowledgeDocumentRepository.updateProcessResult(document);
+            log.warn(
+                    "文档后台处理失败，document={}, file={}: {}",
+                    documentId,
+                    document.getFileName(),
+                    e.getMessage());
+        }
+    }
+
+    @Override
+    public KnowledgeDocumentEntity retryDocument(String documentId, String userId) {
+        KnowledgeDocumentEntity document = requireDocument(documentId, userId);
+        document.prepareRetry();
+        knowledgeDocumentRepository.updateProcessResult(document);
+        try {
+            documentTaskPort.submit(() -> processStoredDocument(documentId, userId));
+        } catch (RuntimeException e) {
+            document.markFailed(rootMessage(e));
+            knowledgeDocumentRepository.updateProcessResult(document);
+            throw e;
+        }
+        return document;
+    }
+
+    @Override
+    public void deleteDocument(String documentId, String userId) {
+        KnowledgeDocumentEntity document = requireDocument(documentId, userId);
+        if (isActiveDocument(document)) {
+            throw new AppException(
+                    ResponseCode.ILLEGAL_PARAMETER.getCode(),
+                    "文档正在处理中，请等待处理完成后再删除");
         }
         knowledgeChunkRepository.deleteByDocumentId(documentId);
         knowledgeDocumentRepository.deleteById(documentId);
@@ -216,15 +298,7 @@ public class RagDomainServiceImpl implements IRagDomainService {
     @Override
     public List<ChunkMatch> searchForConversation(String knowledgeBaseId, String userId, String query) {
         KnowledgeBaseEntity knowledgeBase = requireKnowledgeBase(knowledgeBaseId, userId);
-        return search(
-                knowledgeBase,
-                userId,
-                query,
-                knowledgeBase.effectiveTopK())
-                .stream()
-                .filter(match -> Double.isFinite(match.score())
-                        && match.score() >= knowledgeBase.effectiveMinScore())
-                .toList();
+        return search(knowledgeBase, userId, query, knowledgeBase.effectiveTopK());
     }
 
     private List<ChunkMatch> search(
@@ -236,8 +310,21 @@ public class RagDomainServiceImpl implements IRagDomainService {
             return List.of();
         }
         int limit = topK <= 0 ? DEFAULT_TOP_K : topK;
+        int candidateLimit = Math.min(50, Math.max(limit * 3, 10));
         float[] queryVector = embedTexts(knowledgeBase, userId, List.of(query.trim())).get(0);
-        return vectorStorePort.search(knowledgeBase.getId(), userId, queryVector, limit);
+        List<ChunkMatch> vectorMatches = vectorStorePort
+                .search(knowledgeBase.getId(), userId, queryVector, candidateLimit)
+                .stream()
+                .filter(match -> Double.isFinite(match.vectorScore())
+                        && match.vectorScore() >= knowledgeBase.effectiveMinScore())
+                .toList();
+        List<ChunkMatch> keywordMatches = keywordSearchPort
+                .search(knowledgeBase.getId(), userId, query.trim(), candidateLimit)
+                .stream()
+                .filter(match -> Double.isFinite(match.keywordScore())
+                        && match.keywordScore() >= KeywordSearchPort.MIN_KEYWORD_SCORE)
+                .toList();
+        return RrfFusion.fuse(vectorMatches, keywordMatches, limit);
     }
 
     /**
@@ -281,6 +368,19 @@ public class RagDomainServiceImpl implements IRagDomainService {
             throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "知识库不存在");
         }
         return knowledgeBase;
+    }
+
+    private KnowledgeDocumentEntity requireDocument(String documentId, String userId) {
+        KnowledgeDocumentEntity document = knowledgeDocumentRepository.queryById(documentId);
+        if (document == null || !userId.equals(document.getUserId())) {
+            throw new AppException(ResponseCode.ILLEGAL_PARAMETER.getCode(), "文档不存在");
+        }
+        return document;
+    }
+
+    private boolean isActiveDocument(KnowledgeDocumentEntity document) {
+        return KnowledgeDocumentEntity.STATUS_PENDING.equals(document.getStatus())
+                || KnowledgeDocumentEntity.STATUS_PROCESSING.equals(document.getStatus());
     }
 
     private String resolveFileType(String fileName) {
