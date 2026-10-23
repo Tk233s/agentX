@@ -190,7 +190,9 @@ java @agentX-app/target/run-cp.args -Drag.eval=true org.example.rag.RetrievalEva
 
 1. 建库：MySQL 建 `agentx`，PostgreSQL 建 `agentx_rag`
 
-2. 执行建表脚本：按序号执行 `docs/sql/` 下的 SQL（MySQL 与 PostgreSQL 分别执行）
+2. 执行建表脚本：MySQL 先按顺序执行 `db/mysql/base/`，再按序号执行 `db/mysql/migration/`
+   （`archive/` 是已并入 base 的历史迁移，跳过）；PostgreSQL 先建库与 `vector` 扩展，
+   再执行 `db/postgresql/012_rag_pgvector.sql`。完整顺序见 `db/README.md`
 
 3. 配置环境变量（程序从环境读取，不落配置文件）：
 
