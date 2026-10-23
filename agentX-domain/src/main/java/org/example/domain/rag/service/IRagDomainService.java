@@ -59,6 +59,18 @@ public interface IRagDomainService {
     /** 将失败文档重置并重新提交后台处理。 */
     KnowledgeDocumentEntity retryDocument(String documentId, String userId);
 
+    /**
+     * 回收被进程中断留下的处理中文档。
+     *
+     * <p>后台处理是线程池上的内存任务，进程重启或崩溃后数据库里的 PROCESSING 状态不会自己消失，
+     * 而前端又只允许对 FAILED 文档发起重试，用户会看到一个永远转圈、也点不动重试的文档。
+     * 启动时把这些长时间没有更新的 PROCESSING 文档改判为 FAILED，让重试入口重新可用。</p>
+     *
+     * @param staleMinutes 判定为中断的最短静默时长（分钟）
+     * @return 被回收的文档条数
+     */
+    int recoverInterruptedDocuments(int staleMinutes);
+
     /** 使用向量召回、关键词召回和 RRF 融合检索最相近的分片。 */
     List<ChunkMatch> search(String knowledgeBaseId, String userId, String query, int topK);
 

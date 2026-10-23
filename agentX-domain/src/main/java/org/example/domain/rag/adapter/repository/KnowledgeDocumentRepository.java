@@ -2,6 +2,7 @@ package org.example.domain.rag.adapter.repository;
 
 import org.example.domain.rag.model.entity.KnowledgeDocumentEntity;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -20,6 +21,13 @@ public interface KnowledgeDocumentRepository {
     KnowledgeDocumentEntity queryByContentHash(String knowledgeBaseId, String contentHash);
 
     List<KnowledgeDocumentEntity> queryByKnowledgeBaseId(String knowledgeBaseId);
+
+    /**
+     * 查询指定状态、且更新时间早于给定时刻的文档。
+     *
+     * 供启动时回收被进程中断留下的处理中文档使用，因此不带知识库或用户归属条件。
+     */
+    List<KnowledgeDocumentEntity> queryByStatusBefore(String status, LocalDateTime before);
 
     void deleteById(String id);
 

@@ -31,6 +31,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import jakarta.annotation.Resource;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -282,6 +283,21 @@ public class RagDomainServiceImpl implements IRagDomainService {
             throw e;
         }
         return document;
+    }
+
+    @Override
+    public int recoverInterruptedDocuments(int staleMinutes) {
+        LocalDateTime staleBefore = LocalDateTime.now().minusMinutes(Math.max(staleMinutes, 1));
+        List<KnowledgeDocumentEntity> interrupted = knowledgeDocumentRepository
+                .queryByStatusBefore(KnowledgeDocumentEntity.STATUS_PROCESSING, staleBefore);
+        for (KnowledgeDocumentEntity document : interrupted) {
+            document.markFailed("处理被中断，请点击重试");
+            knowledgeDocumentRepository.updateProcessResult(document);
+        }
+        if (!interrupted.isEmpty()) {
+            log.warn("回收被中断的文档处理任务 {} 条", interrupted.size());
+        }
+        return interrupted.size();
     }
 
     @Override

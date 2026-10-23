@@ -94,6 +94,16 @@ public class PgKnowledgeDocumentRepositoryImpl implements KnowledgeDocumentRepos
     }
 
     @Override
+    public List<KnowledgeDocumentEntity> queryByStatusBefore(String status, LocalDateTime before) {
+        return jdbcTemplate.query(
+                "SELECT " + COLUMNS + " FROM knowledge_document WHERE status = ? AND updated_at < ?"
+                        + " ORDER BY updated_at",
+                ROW_MAPPER,
+                status,
+                toTimestamp(before));
+    }
+
+    @Override
     public void deleteById(String id) {
         jdbcTemplate.update("DELETE FROM knowledge_document WHERE id = ?", id);
     }
