@@ -47,6 +47,14 @@ public class RagDomainServiceImpl implements IRagDomainService {
 
     private static final Logger log = LoggerFactory.getLogger(RagDomainServiceImpl.class);
 
+    /**
+     * 关键词路单独证明"库里确有答案"所需的最低分，高于召回阈值。
+     *
+     * 召回阈值只决定分片能否进入候选池，拒答需要更强的证据：
+     * trigram 分数只反映字面重合，0.40 附近仍可能只是无关分片里的个别同形词。
+     */
+    private static final double MIN_KEYWORD_CONFIDENT_SCORE = 0.60D;
+
     @Resource
     private KnowledgeBaseRepository knowledgeBaseRepository;
 
@@ -340,7 +348,32 @@ public class RagDomainServiceImpl implements IRagDomainService {
                 .filter(match -> Double.isFinite(match.keywordScore())
                         && match.keywordScore() >= minKeywordScore)
                 .toList();
-        return RrfFusion.fuse(vectorMatches, keywordMatches, limit, vectorWeight, keywordWeight);
+        List<ChunkMatch> fused = RrfFusion.fuse(vectorMatches, keywordMatches, limit, vectorWeight, keywordWeight);
+        if (fused.isEmpty() || !hasConfidentMatch(vectorMatches, keywordMatches)) {
+            log.debug("检索未命中足够可信的内容，按查不到处理，vector={}, keyword={}",
+                    vectorMatches.size(), keywordMatches.size());
+            return List.of();
+        }
+        return fused;
+    }
+
+    /**
+     * 判定本轮检索是否足够可信地命中了库中内容，否则应当按"查不到"处理。
+     *
+     * 向量分是余弦相似度，能进入候选说明已过知识库配置的 minScore，可直接采信；
+     * 关键词分是 trigram 字面重合度，与向量分不同量纲，必须用独立的更高阈值才算数。
+     */
+    private boolean hasConfidentMatch(List<ChunkMatch> vectorMatches, List<ChunkMatch> keywordMatches) {
+        if (!vectorMatches.isEmpty()) {
+            return true;
+        }
+        for (ChunkMatch match : keywordMatches) {
+            if (Double.isFinite(match.keywordScore())
+                    && match.keywordScore() >= MIN_KEYWORD_CONFIDENT_SCORE) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
