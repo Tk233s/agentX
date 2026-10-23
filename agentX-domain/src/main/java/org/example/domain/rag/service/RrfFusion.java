@@ -26,16 +26,35 @@ public final class RrfFusion {
     private RrfFusion() {
     }
 
+    /**
+     * 等权融合，两路各贡献 1.0。等价于 {@code fuse(..., 1.0D, 1.0D)}。
+     */
     public static List<ChunkMatch> fuse(
             List<ChunkMatch> vectorMatches,
             List<ChunkMatch> keywordMatches,
             int topK) {
+        return fuse(vectorMatches, keywordMatches, topK, 1D, 1D);
+    }
+
+    /**
+     * 带权融合。
+     *
+     * <p>权重作用于每一路的名次贡献 {@code weight / (k + rank)}。把某一路权重设为 0，
+     * 等于该路完全不参与，可用于对照「纯向量检索」与「混合检索」的效果差异。
+     * 权重为负或非有限值时按 0 处理。</p>
+     */
+    public static List<ChunkMatch> fuse(
+            List<ChunkMatch> vectorMatches,
+            List<ChunkMatch> keywordMatches,
+            int topK,
+            double vectorWeight,
+            double keywordWeight) {
         int limit = topK <= 0 ? 3 : Math.min(topK, MAX_CANDIDATES);
         Map<String, Candidate> candidates = new LinkedHashMap<>();
         Map<String, String> contentAliases = new HashMap<>();
 
-        collect(vectorMatches, true, candidates, contentAliases);
-        collect(keywordMatches, false, candidates, contentAliases);
+        collect(vectorMatches, true, sanitizeWeight(vectorWeight), candidates, contentAliases);
+        collect(keywordMatches, false, sanitizeWeight(keywordWeight), candidates, contentAliases);
 
         return candidates.values().stream()
                 .map(candidate -> candidate.toMatch())
@@ -77,9 +96,10 @@ public final class RrfFusion {
     private static void collect(
             List<ChunkMatch> matches,
             boolean vectorSource,
+            double weight,
             Map<String, Candidate> candidates,
             Map<String, String> contentAliases) {
-        if (matches == null || matches.isEmpty()) {
+        if (weight <= 0 || matches == null || matches.isEmpty()) {
             return;
         }
         Set<String> seen = new HashSet<>();
@@ -105,8 +125,13 @@ public final class RrfFusion {
                 candidate.merge(match);
                 contentAliases.putIfAbsent(contentKey, existingKey);
             }
-            candidate.addSource(vectorSource, rank);
+            candidate.addSource(vectorSource, rank, weight);
         }
+    }
+
+    /** 非法权重（负数、NaN、无穷）按 0 处理，避免污染融合分。 */
+    private static double sanitizeWeight(double weight) {
+        return Double.isFinite(weight) && weight > 0 ? weight : 0D;
     }
 
     private static String contentKey(String content) {
@@ -155,8 +180,8 @@ public final class RrfFusion {
             keywordScore = Math.max(keywordScore, match.keywordScore());
         }
 
-        private void addSource(boolean vectorSource, int rank) {
-            fusedScore += 1D / (RANK_CONSTANT + rank);
+        private void addSource(boolean vectorSource, int rank, double weight) {
+            fusedScore += weight / (RANK_CONSTANT + rank);
             if (vectorSource) {
                 vectorMatched = true;
             } else {

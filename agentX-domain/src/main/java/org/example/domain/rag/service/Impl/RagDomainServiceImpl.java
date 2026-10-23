@@ -291,21 +291,37 @@ public class RagDomainServiceImpl implements IRagDomainService {
 
     @Override
     public List<ChunkMatch> search(String knowledgeBaseId, String userId, String query, int topK) {
+        return search(knowledgeBaseId, userId, query, topK, 1D, 1D, KeywordSearchPort.MIN_KEYWORD_SCORE);
+    }
+
+    @Override
+    public List<ChunkMatch> search(
+            String knowledgeBaseId,
+            String userId,
+            String query,
+            int topK,
+            double vectorWeight,
+            double keywordWeight,
+            double minKeywordScore) {
         KnowledgeBaseEntity knowledgeBase = requireKnowledgeBase(knowledgeBaseId, userId);
-        return search(knowledgeBase, userId, query, topK);
+        return search(knowledgeBase, userId, query, topK, vectorWeight, keywordWeight, minKeywordScore);
     }
 
     @Override
     public List<ChunkMatch> searchForConversation(String knowledgeBaseId, String userId, String query) {
         KnowledgeBaseEntity knowledgeBase = requireKnowledgeBase(knowledgeBaseId, userId);
-        return search(knowledgeBase, userId, query, knowledgeBase.effectiveTopK());
+        return search(knowledgeBase, userId, query, knowledgeBase.effectiveTopK(),
+                1D, 1D, KeywordSearchPort.MIN_KEYWORD_SCORE);
     }
 
     private List<ChunkMatch> search(
             KnowledgeBaseEntity knowledgeBase,
             String userId,
             String query,
-            int topK) {
+            int topK,
+            double vectorWeight,
+            double keywordWeight,
+            double minKeywordScore) {
         if (query == null || query.isBlank()) {
             return List.of();
         }
@@ -322,9 +338,9 @@ public class RagDomainServiceImpl implements IRagDomainService {
                 .search(knowledgeBase.getId(), userId, query.trim(), candidateLimit)
                 .stream()
                 .filter(match -> Double.isFinite(match.keywordScore())
-                        && match.keywordScore() >= KeywordSearchPort.MIN_KEYWORD_SCORE)
+                        && match.keywordScore() >= minKeywordScore)
                 .toList();
-        return RrfFusion.fuse(vectorMatches, keywordMatches, limit);
+        return RrfFusion.fuse(vectorMatches, keywordMatches, limit, vectorWeight, keywordWeight);
     }
 
     /**

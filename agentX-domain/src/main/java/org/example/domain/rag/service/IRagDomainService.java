@@ -63,6 +63,25 @@ public interface IRagDomainService {
     List<ChunkMatch> search(String knowledgeBaseId, String userId, String query, int topK);
 
     /**
+     * 带权重的混合检索。
+     *
+     * <p>权重决定两路召回对融合分的贡献。把某一路权重设为 0 即彻底关闭该路，
+     * 可用 {@code (1, 0)} 表达「纯向量检索」，用于对照混合检索带来的效果差异。</p>
+     *
+     * <p>{@code minKeywordScore} 是关键词路的最低分。它和向量路的 {@code minScore}
+     * 不同量纲（后者是余弦相似度、前者是 word_similarity），但都决定「这一路算不算命中」，
+     * 因此必须能单独调——两路阈值不对称会直接影响「无答案时能否返回空结果」。</p>
+     */
+    List<ChunkMatch> search(
+            String knowledgeBaseId,
+            String userId,
+            String query,
+            int topK,
+            double vectorWeight,
+            double keywordWeight,
+            double minKeywordScore);
+
+    /**
      * 按知识库自身的阈值和 TopK 检索，只返回可以进入对话上下文的结果。
      */
     List<ChunkMatch> searchForConversation(String knowledgeBaseId, String userId, String query);
